@@ -23,3 +23,6 @@ Thumbs.db
 
 # local worker secrets
 .dev.vars
+
+# wrangler local state
+worker/.wrangler/
