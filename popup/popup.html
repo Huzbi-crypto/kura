@@ -40,45 +40,57 @@
     </section>
 
     <section id="view-settings" class="view">
-      <div class="card">
-        <h3>AniList</h3>
-        <p class="muted">Already registered. Just click Connect — the client id below is only for running your own AniList app.</p>
-        <input id="anilist-client" placeholder="optional: your own client id" />
+      <p class="lede">Sign in once per tracker. Kura keeps the same progress on all of them — nothing to configure.</p>
+
+      <div class="card link">
+        <div class="who"><b>AniList</b><span id="anilist-state" class="state">not connected</span></div>
         <div class="row">
-          <button id="anilist-connect">Connect</button>
-          <button id="import-anilist">Import</button>
-          <span id="anilist-state" class="state"></span>
+          <button id="anilist-connect" class="primary">Connect</button>
+          <button id="import-anilist" class="ghost">Import list</button>
         </div>
       </div>
 
-      <div class="card">
-        <h3>MyAnimeList</h3>
-        <p class="muted">Already deployed: the token exchange runs in a Worker, so no secret ships in the extension. Click Connect. Host your own by filling these in.</p>
-        <input id="mal-client" placeholder="optional: your own MAL client id" />
-        <input id="mal-worker" placeholder="optional: your own Worker URL" />
+      <div class="card link">
+        <div class="who"><b>MyAnimeList</b><span id="mal-state" class="state">not connected</span></div>
         <div class="row">
-          <button id="mal-connect">Connect</button>
-          <button id="import-mal">Import</button>
-          <span id="mal-state" class="state"></span>
+          <button id="mal-connect" class="primary">Connect</button>
+          <button id="import-mal" class="ghost">Import list</button>
         </div>
       </div>
 
-      <div class="card">
-        <h3>MangaBaka</h3>
-        <p class="muted">Personal access token from mangabaka.org. This is also the ID bridge between the other two.</p>
-        <input id="mb-token" placeholder="MangaBaka token" />
+      <div class="card link">
+        <div class="who"><b>MangaBaka</b><span id="mb-state" class="state">not connected</span></div>
         <div class="row">
-          <button id="mb-save">Save</button>
-          <button id="import-mangabaka">Import</button>
-          <span id="mb-state" class="state"></span>
+          <button id="mb-connect" class="primary">Connect</button>
+          <button id="import-mangabaka" class="ghost">Import list</button>
         </div>
       </div>
 
-      <div class="card">
-        <h3>Redirect URIs</h3>
-        <p class="muted">Register these on the tracker's app settings, exactly.</p>
+      <details class="advanced">
+        <summary>Advanced — run your own apps</summary>
+        <p class="muted">Only needed if you would rather use your own registrations. Leave these empty otherwise.</p>
+
+        <label for="anilist-client">AniList client id</label>
+        <input id="anilist-client" placeholder="optional" />
+
+        <label for="mal-client">MAL client id</label>
+        <input id="mal-client" placeholder="optional" />
+
+        <label for="mal-worker">MAL token Worker URL</label>
+        <input id="mal-worker" placeholder="optional" />
+
+        <label for="mb-client">MangaBaka app client id</label>
+        <input id="mb-client" placeholder="optional" />
+
+        <label for="mb-token">MangaBaka personal access token</label>
+        <input id="mb-token" type="password" placeholder="mb-… (only if you would rather not sign in)" />
+        <div class="row">
+          <button id="mb-save">Save token</button>
+        </div>
+
+        <p class="muted">Redirect URIs to register on each app:</p>
         <code id="redirects"></code>
-      </div>
+      </details>
     </section>
   </main>
   <script type="module" src="popup.js"></script>

@@ -141,20 +141,25 @@ async function runImport(tracker) {
 }
 
 /* ---------- settings ---------- */
-const KEYS = { anilistClient: 'anilist.clientId', malClient: 'mal.clientId', malWorker: 'mal.worker' };
+const KEYS = { anilistClient: 'anilist.clientId', malClient: 'mal.clientId', malWorker: 'mal.worker', mbClient: 'mangabaka.clientId' };
+
+async function paintState(sel, ok, extra = 'connected') {
+  const el = $(sel);
+  el.textContent = ok ? extra : 'not connected';
+  el.className = 'state ' + (ok ? 'on' : '');
+}
 
 async function hydrateSettings() {
   const s = await chrome.storage.local.get(Object.values(KEYS));
   $('#anilist-client').value = s[KEYS.anilistClient] || '';
   $('#mal-client').value = s[KEYS.malClient] || '';
   $('#mal-worker').value = s[KEYS.malWorker] || '';
-  $('#anilist-state').textContent = (await anilist.meta.connected()) ? 'connected' : 'not connected';
-  $('#anilist-state').className = 'state ' + ((await anilist.meta.connected()) ? 'on' : '');
-  $('#mal-state').textContent = (await mal.meta.connected()) ? 'connected' : 'not connected';
-  $('#mal-state').className = 'state ' + ((await mal.meta.connected()) ? 'on' : '');
-  $('#mb-state').textContent = (await mangabaka.meta.connected()) ? 'connected' : 'not connected';
-  $('#mb-state').className = 'state ' + ((await mangabaka.meta.connected()) ? 'on' : '');
-  $('#redirects').textContent = chrome.identity.getRedirectURL('anilist') + '\n' + chrome.identity.getRedirectURL('mal');
+  $('#mb-client').value = s[KEYS.mbClient] || '';
+  await paintState('#anilist-state', await anilist.meta.connected());
+  await paintState('#mal-state', await mal.meta.connected());
+  const kind = await mangabaka.connected();
+  await paintState('#mb-state', Boolean(kind), kind === 'token' ? 'connected · token' : 'connected');
+  $('#redirects').textContent = [chrome.identity.getRedirectURL('anilist'), chrome.identity.getRedirectURL('mal'), chrome.identity.getRedirectURL('mangabaka')].join('\n');
 }
 
 function bindSettings() {
@@ -175,7 +180,18 @@ function bindSettings() {
     hydrateSettings();
   };
   $('#mb-save').onclick = async () => {
+    const id = $('#mb-client').value.trim();
+    if (id) await chrome.storage.local.set({ [KEYS.mbClient]: id });
+    else await chrome.storage.local.remove(KEYS.mbClient);
     await mangabaka.setToken($('#mb-token').value);
+    await runImport('mangabaka');
+    hydrateSettings();
+  };
+  $('#mb-connect').onclick = async () => {
+    const id = $('#mb-client').value.trim();
+    if (id) await chrome.storage.local.set({ [KEYS.mbClient]: id });
+    $('#mb-state').textContent = 'waiting…';
+    try { await mangabaka.connect(); } catch (e) { $('#mb-state').textContent = e.message; $('#mb-state').className = 'state err'; return; }
     await runImport('mangabaka');
     hydrateSettings();
   };

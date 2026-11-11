@@ -3,6 +3,24 @@
 All notable changes to Kura. Format: [Keep a Changelog](https://keepachangelog.com/), versioning
 follows [SemVer](https://semver.org/).
 
+## [0.4.0] — unreleased
+
+Sign in, don't configure. And the library actually renders.
+
+- **Setup rebuilt**: three rows — AniList, MyAnimeList, MangaBaka — each with Connect and Import
+  list. No client ids, worker URLs or tokens on screen. All of it moved under *Advanced — run your
+  own apps*, for people who would rather use their own registrations.
+- **Library rendering fixed**: grid rows were being squeezed to the popup height, so every card was
+  ~95px tall and clipped a ~290px cover (the wall of thin strips). Rows are now content-sized
+  (`grid-auto-rows: max-content`) and the cover is a ratio box the grid can measure.
+- **MangaBaka personal tokens fixed**: they go in `x-api-key`. We were sending
+  `Authorization: Bearer`, which MangaBaka treats as an OAuth token and rejects with
+  `Invalid access token`. This is why every token pasted so far failed.
+- **MangaBaka OAuth**: public client + PKCE (no secret), `openid` + `library.read/write` +
+  `offline_access`, tokens refreshed single-flight because MangaBaka retires the old refresh token
+  on every rotation. Connect shows a clear message until a client id is configured.
+- **MangaBaka library calls** moved to `/v2`, where items are `{ entry, series }`.
+
 ## [0.3.0] — unreleased
 
 Import, real search results, and a pill that gets out of the way.

@@ -72,6 +72,22 @@ const pageProbe = await send('Runtime.evaluate', {
   returnByValue: true,
 }, pageSession);
 console.log('popup probe:', pageProbe.result.value);
+
+// Setup tab: no inputs should be visible, three Connect buttons should be
+await send('Runtime.evaluate', { expression: `document.querySelector('[data-view=settings]').click()` }, pageSession);
+await sleep(700);
+const setupProbe = await send('Runtime.evaluate', {
+  expression: `(() => {
+    const vis = (el) => !!(el && el.offsetParent !== null);
+    const inputs = [...document.querySelectorAll('#view-settings input')].filter(vis).length;
+    const connects = [...document.querySelectorAll('#view-settings button')].filter(vis).map(b => b.id).filter(id => /connect$/.test(id));
+    return JSON.stringify({ visibleInputs: inputs, connectButtons: connects, state: [...document.querySelectorAll('#view-settings .state')].map(e => e.textContent) });
+  })()`, returnByValue: true,
+}, pageSession);
+console.log('setup probe:', setupProbe.result.value);
+const shot = await send('Page.captureScreenshot', { format: 'png' }, pageSession);
+const { writeFileSync } = await import('node:fs');
+writeFileSync('C:/Users/huzbi/Projects/kura/debug-setup.png', Buffer.from(shot.data, 'base64'));
 for (const e of events) {
   if (e.sessionId !== pageSession) continue;
   if (e.method === 'Runtime.exceptionThrown') console.log('POPUP EXCEPTION:', JSON.stringify(e.params.exceptionDetails).slice(0, 500));
