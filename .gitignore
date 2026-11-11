@@ -17,3 +17,6 @@ verify-popup.png
 # OS
 .DS_Store
 Thumbs.db
+
+# scratch
+.chapter-url.txt
