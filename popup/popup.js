@@ -143,10 +143,10 @@ async function hydrateSettings() {
 function bindSettings() {
   $('#anilist-connect').onclick = async () => {
     const id = $('#anilist-client').value.trim();
-    if (!id) return;
-    await chrome.storage.local.set({ [KEYS.anilistClient]: id });
+    if (id) await chrome.storage.local.set({ [KEYS.anilistClient]: id });
+    else await chrome.storage.local.remove(KEYS.anilistClient);
     $('#anilist-state').textContent = 'waiting…';
-    try { await anilist.connect(id); } catch (e) { $('#anilist-state').textContent = e.message; return; }
+    try { await anilist.connect(id || undefined); } catch (e) { $('#anilist-state').textContent = e.message; return; }
     hydrateSettings(); refresh();
   };
   $('#mal-connect').onclick = async () => {

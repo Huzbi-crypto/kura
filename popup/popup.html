@@ -41,8 +41,8 @@
     <section id="view-settings" class="view">
       <div class="card">
         <h3>AniList</h3>
-        <p class="muted">Implicit grant, no secret. Create an app at anilist.co/settings/developer and paste the client id.</p>
-        <input id="anilist-client" placeholder="AniList client id" />
+        <p class="muted">Already registered. Just click Connect — the client id below is only for running your own AniList app.</p>
+        <input id="anilist-client" placeholder="optional: your own client id" />
         <div class="row">
           <button id="anilist-connect">Connect</button>
           <span id="anilist-state" class="state"></span>
@@ -51,9 +51,9 @@
 
       <div class="card">
         <h3>MyAnimeList</h3>
-        <p class="muted">MAL needs a client secret for the token exchange, so a Worker holds it. Deploy <code>worker/mal-token.js</code>, then paste its URL.</p>
-        <input id="mal-client" placeholder="MAL client id" />
-        <input id="mal-worker" placeholder="https://kura-mal.<you>.workers.dev" />
+        <p class="muted">Already deployed: the token exchange runs in a Worker, so no secret ships in the extension. Click Connect. Host your own by filling these in.</p>
+        <input id="mal-client" placeholder="optional: your own MAL client id" />
+        <input id="mal-worker" placeholder="optional: your own Worker URL" />
         <div class="row">
           <button id="mal-connect">Connect</button>
           <span id="mal-state" class="state"></span>

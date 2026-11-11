@@ -42,21 +42,20 @@ git clone https://github.com/Huzbi-crypto/kura.git
 ```
 
 1. `chrome://extensions` → **Developer mode** → **Load unpacked** → the cloned folder.
-2. Open the popup → **Setup** and connect what you use:
-   - **AniList** — create an app at [anilist.co/settings/developer](https://anilist.co/settings/developer),
-     redirect URI is printed in Setup, paste the client id → Connect.
-   - **MangaBaka** — personal access token → Save. This one also acts as the ID bridge between the
-     other two, so connecting it alone fills in the MAL/AniList ids.
-   - **MyAnimeList** — deploy the included Worker (MAL's token exchange needs a client secret, which
-     must not ship in the bundle):
-     ```bash
-     cd worker
-     npx wrangler deploy mal-token.js --name kura-mal
-     npx wrangler secret put MAL_CLIENT_ID
-     npx wrangler secret put MAL_CLIENT_SECRET
-     ```
-     Register the Setup tab's `chromiumapp.org/mal` URI on your MAL app, then paste the client id
-     and Worker URL → Connect.
+2. Open the popup → **Setup**. Three clicks:
+   - **AniList** → Connect.
+   - **MyAnimeList** → Connect.
+   - **MangaBaka** → paste a personal access token from mangabaka.org → Save.
+
+The AniList app and the MyAnimeList token-exchange Worker are already deployed for you, so there
+is nothing to register and no secret in the bundle. Both Setup fields are optional overrides if you
+want to run your own apps:
+
+```bash
+cd worker && npx wrangler deploy
+npx wrangler secret put MAL_CLIENT_ID
+npx wrangler secret put MAL_CLIENT_SECRET
+```
 
 ## Using it
 

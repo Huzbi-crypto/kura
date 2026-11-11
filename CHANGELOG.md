@@ -3,6 +3,16 @@
 All notable changes to Kura. Format: [Keep a Changelog](https://keepachangelog.com/), versioning
 follows [SemVer](https://semver.org/).
 
+## [0.2.0] — unreleased
+
+Zero-configuration connect.
+
+- Ships the project's AniList client id and a deployed Cloudflare Worker for MyAnimeList, so
+  Setup is three clicks instead of registering apps and deploying infrastructure.
+- Setup fields are now optional overrides for self-hosters; clearing them restores the defaults.
+- Worker verified live: `/health`, and `/exchange` returns MAL's own error for a bad code, proving
+  the client secret is attached (an invalid secret would answer `invalid_client`).
+
 ## [0.1.0] — unreleased
 
 First working build.

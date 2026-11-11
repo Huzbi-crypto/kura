@@ -6,14 +6,16 @@ const API = 'https://api.myanimelist.net/v2';
 const STATUS_OUT = { planning: 'plan_to_read', reading: 'reading', completed: 'completed', paused: 'on_hold', dropped: 'dropped', rereading: 'reading' };
 const STATUS_IN = { plan_to_read: 'planning', reading: 'reading', completed: 'completed', on_hold: 'paused', dropped: 'dropped' };
 
-// A published build points at the project's deployed Worker; self-hosters can override it in Setup.
-const DEFAULT_WORKER = '';
+// A published build ships the project's own MAL app + Worker so users can just click Connect.
+// Self-hosters override both in Setup; the client id is public, the secret lives only in the Worker.
+const DEFAULT_CLIENT_ID = '90679c18c60bfeaec1949de73dc632e9';
+const DEFAULT_WORKER = 'https://kura-mal.huzbipers-o-n-al.workers.dev';
 
 const K = { clientId: 'mal.clientId', worker: 'mal.worker', token: 'mal.token', refresh: 'mal.refresh', expires: 'mal.expires' };
 
 async function get() {
   const s = await chrome.storage.local.get(Object.values(K));
-  return { ...s, [K.worker]: s[K.worker] || DEFAULT_WORKER };
+  return { ...s, [K.worker]: s[K.worker] || DEFAULT_WORKER, [K.clientId]: s[K.clientId] || DEFAULT_CLIENT_ID };
 }
 
 export async function configured() {
@@ -22,7 +24,12 @@ export async function configured() {
 }
 
 export async function setConfig({ clientId, worker }) {
-  await chrome.storage.local.set({ [K.clientId]: (clientId || '').trim(), [K.worker]: (worker || '').trim().replace(/\/$/, '') });
+  const set = {};
+  const clear = [];
+  if (clientId && clientId.trim()) set[K.clientId] = clientId.trim(); else clear.push(K.clientId);
+  if (worker && worker.trim()) set[K.worker] = worker.trim().replace(/\/$/, ''); else clear.push(K.worker);
+  if (Object.keys(set).length) await chrome.storage.local.set(set);
+  if (clear.length) await chrome.storage.local.remove(clear);
 }
 
 export async function token() {
