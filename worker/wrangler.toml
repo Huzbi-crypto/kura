@@ -1,0 +1,7 @@
+name = "kura-mal"
+main = "mal-token.js"
+compatibility_date = "2026-01-01"
+
+# Secrets are NOT set here — put them in Cloudflare:
+#   npx wrangler secret put MAL_CLIENT_ID
+#   npx wrangler secret put MAL_CLIENT_SECRET
