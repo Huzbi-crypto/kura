@@ -124,6 +124,8 @@ export async function connect() {
     grant_type: 'authorization_code', code, redirect_uri: redirect, client_id: cid, code_verifier: verifier,
   });
   await saveTokens(tok);
+  // a stale personal token must not linger and shadow (or outlive) the OAuth session
+  await chrome.storage.local.remove(K_PAT);
   return true;
 }
 

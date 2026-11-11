@@ -3,6 +3,11 @@
 All notable changes to Kura. Format: [Keep a Changelog](https://keepachangelog.com/), versioning
 follows [SemVer](https://semver.org/).
 
+## [0.5.1] — unreleased
+
+- Signing in to MangaBaka clears any stored personal access token, so an old token cannot linger
+  next to the OAuth session.
+
 ## [0.5.0] — unreleased
 
 - **MangaBaka one-click sign-in**: Kura's own public OAuth client is now the default, so Connect on
