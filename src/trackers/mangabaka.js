@@ -18,7 +18,7 @@ const K_CLIENT = 'mangabaka.clientId'; // optional override for people running t
 
 // Filled in once the Kura MangaBaka app exists (Native App / public / PKCE).
 // Until then Connect explains what is missing instead of failing silently.
-export const DEFAULT_CLIENT_ID = '';
+export const DEFAULT_CLIENT_ID = 'JsSOqiTcUOWAmxXDspFHLnxfisVuxutw';
 
 const STATUS_OUT = { planning: 'plan_to_read', reading: 'reading', completed: 'completed', paused: 'paused', dropped: 'dropped', rereading: 'rereading' };
 const STATUS_IN = Object.fromEntries(Object.entries(STATUS_OUT).map(([k, v]) => [v, k]));

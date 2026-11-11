@@ -3,6 +3,14 @@
 All notable changes to Kura. Format: [Keep a Changelog](https://keepachangelog.com/), versioning
 follows [SemVer](https://semver.org/).
 
+## [0.5.0] — unreleased
+
+- **MangaBaka one-click sign-in**: Kura's own public OAuth client is now the default, so Connect on
+  MangaBaka is the same single click as AniList and MAL. Personal access tokens still work under
+  Advanced. Verified against MangaBaka's authorize endpoint: an unknown client returns
+  `invalid_client` and a mismatched redirect returns `invalid_redirect`, while Kura's client id +
+  redirect pass both checks.
+
 ## [0.4.0] — unreleased
 
 Sign in, don't configure. And the library actually renders.

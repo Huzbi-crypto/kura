@@ -47,7 +47,8 @@ const probe = await send('Runtime.evaluate', {
   expression: `JSON.stringify({
     listenersRegistered: chrome.runtime.onMessage.hasListeners(),
     alarmListeners: chrome.alarms.onAlarm.hasListeners(),
-    manifestName: chrome.runtime.getManifest().name
+    manifestName: chrome.runtime.getManifest().name,
+    redirects: ['anilist', 'mal', 'mangabaka'].map(p => chrome.identity.getRedirectURL(p))
   })`, returnByValue: true,
 }, sw.sessionId);
 console.log('probe:', probe.result.value);
