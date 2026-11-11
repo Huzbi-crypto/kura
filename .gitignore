@@ -1,0 +1,19 @@
+# build + local artifacts
+dist/
+*.zip
+*.crx
+*.pem
+.check/
+.check.mjs
+
+# verifier output
+verify-popup.png
+
+# local env / secrets (never commit tracker credentials)
+.env
+.env.*
+*.local
+
+# OS
+.DS_Store
+Thumbs.db

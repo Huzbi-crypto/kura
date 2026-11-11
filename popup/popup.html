@@ -1,0 +1,82 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Kura</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <header>
+    <div class="brand">Kura<span>manga tracker</span></div>
+    <div class="chips" id="chips"></div>
+  </header>
+
+  <nav class="tabs" id="tabs">
+    <button data-view="library" class="active">Library</button>
+    <button data-view="search">Add</button>
+    <button data-view="settings">Setup</button>
+  </nav>
+
+  <main>
+    <section id="view-library" class="view active">
+      <div class="bar">
+        <input id="filter" type="search" placeholder="Filter your library" />
+        <button id="sync-all" title="Pull from every tracker, then push the highest chapter">Sync all</button>
+      </div>
+      <div id="grid" class="grid"></div>
+      <div id="empty" class="empty" hidden>
+        <p>Nothing yet.</p>
+        <p class="muted">Open a chapter on one of your reader sites — Kura adds it automatically — or add a series from <b>Add</b>.</p>
+      </div>
+    </section>
+
+    <section id="view-search" class="view">
+      <div class="bar">
+        <input id="q" type="search" placeholder="Search MangaBaka…" />
+        <button id="go">Search</button>
+      </div>
+      <div id="results" class="results"></div>
+    </section>
+
+    <section id="view-settings" class="view">
+      <div class="card">
+        <h3>AniList</h3>
+        <p class="muted">Implicit grant, no secret. Create an app at anilist.co/settings/developer and paste the client id.</p>
+        <input id="anilist-client" placeholder="AniList client id" />
+        <div class="row">
+          <button id="anilist-connect">Connect</button>
+          <span id="anilist-state" class="state"></span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>MyAnimeList</h3>
+        <p class="muted">MAL needs a client secret for the token exchange, so a Worker holds it. Deploy <code>worker/mal-token.js</code>, then paste its URL.</p>
+        <input id="mal-client" placeholder="MAL client id" />
+        <input id="mal-worker" placeholder="https://kura-mal.<you>.workers.dev" />
+        <div class="row">
+          <button id="mal-connect">Connect</button>
+          <span id="mal-state" class="state"></span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>MangaBaka</h3>
+        <p class="muted">Personal access token from mangabaka.org. This is also the ID bridge between the other two.</p>
+        <input id="mb-token" placeholder="MangaBaka token" />
+        <div class="row">
+          <button id="mb-save">Save</button>
+          <span id="mb-state" class="state"></span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Redirect URIs</h3>
+        <p class="muted">Register these on the tracker's app settings, exactly.</p>
+        <code id="redirects"></code>
+      </div>
+    </section>
+  </main>
+  <script type="module" src="popup.js"></script>
+</body>
+</html>
