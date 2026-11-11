@@ -3,6 +3,16 @@
 All notable changes to Kura. Format: [Keep a Changelog](https://keepachangelog.com/), versioning
 follows [SemVer](https://semver.org/).
 
+## [0.5.2] — unreleased
+
+- **MangaBaka import reported nothing, including its own errors.** The import result was written to
+  `#mangabaka-state`, but the element is `#mb-state`, so the lookup returned null and every outcome
+  was discarded. Tracker → element ids are now mapped explicitly.
+- **Per-series MangaBaka calls were 404ing**: reads and writes went to `/v2/my/library/{id}`, which
+  does not exist. Only `/v1/my/library/{series_id}` carries get/patch.
+- **Failures now say what happened**: HTTP status and message inline in the Setup row, plus a toast,
+  and an explicit "nothing in your MangaBaka library to import" instead of a silent "0 series".
+
 ## [0.5.1] — unreleased
 
 - Signing in to MangaBaka clears any stored personal access token, so an old token cannot linger

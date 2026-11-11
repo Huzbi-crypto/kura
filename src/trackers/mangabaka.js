@@ -179,7 +179,7 @@ export async function pull(series) {
   const id = series.links?.mangabaka;
   if (!id) return null;
   try {
-    const d = await api(`/v2/my/library/${id}`);
+    const d = await api(`/v1/my/library/${id}`);
     const e = d?.data?.entry || d?.data?.library_entry || d?.data || {};
     return {
       ...emptyRemote(),
@@ -203,7 +203,8 @@ export async function push(series, st) {
   if (st.volume) body.progress_volume = Math.round(st.volume);
   if (st.status) body.state = STATUS_OUT[st.status];
   if (st.rating) body.rating = Math.round(st.rating * 10);
-  const d = await api(`/v2/my/library/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
+  // only /v1 carries per-series writes (there is no /v2/my/library/{id})
+  const d = await api(`/v1/my/library/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
   return d?.data || null;
 }
 
@@ -241,8 +242,16 @@ export async function importList() {
   const out = [];
   let page = 1;
   while (page <= 20) {
-    const d = await api(`/v2/my/library?limit=100&page=${page}`);
-    const rows = d?.data || [];
+    let d;
+    try {
+      d = await api(`/v2/my/library?limit=100&page=${page}`);
+    } catch (e) {
+      throw new Error(`MangaBaka library read failed (${e.status || 'network'}: ${e.message.replace(/^\d+\s*/, '')})`);
+    }
+    const rows = Array.isArray(d?.data) ? d.data : [];
+    if (rows.length && !out.length && !rows[0]?.entry && !rows[0]?.series_id) {
+      throw new Error('MangaBaka library read returned an unexpected shape: ' + Object.keys(rows[0] || {}).slice(0, 6).join(', '));
+    }
     if (!rows.length) break;
     for (const e of rows) {
       const entry = e.entry || e;
@@ -265,6 +274,16 @@ export async function importList() {
     page++;
   }
   return out;
+}
+
+/** how many library rows MangaBaka has at all, for an honest "nothing to import" message */
+export async function libraryCount() {
+  try {
+    const d = await api('/v2/my/library?limit=1&page=1');
+    return d?.pagination?.count ?? (Array.isArray(d?.data) ? d.data.length : 0);
+  } catch {
+    return null;
+  }
 }
 
 /** bridge: the same series on another tracker -> the MangaBaka series */

@@ -14,6 +14,17 @@ const TRACKERS = [
 
 let lib = { items: [], connected: {} };
 
+/* a visible error surface: silent failures are worse than loud ones */
+let toastTimer;
+function showToast(msg, ms = 5000) {
+  let t = document.getElementById('toast');
+  if (!t) { t = el('div', 'toast'); t.id = 'toast'; document.body.append(t); }
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), ms);
+}
+
 function dots(links = {}, trackers = {}) {
   const wrap = el('div', 'dots');
   for (const t of TRACKERS) {
@@ -124,18 +135,30 @@ async function search() {
 }
 
 /* ---------- import ---------- */
+// the state element ids do not follow the tracker ids (mangabaka -> #mb-state); getting this wrong
+// silently swallowed every MangaBaka import result and error
+const STATE_SEL = { anilist: '#anilist-state', mal: '#mal-state', mangabaka: '#mb-state' };
+
 async function runImport(tracker) {
-  const stateEl = tracker ? document.querySelector('#' + tracker + '-state') : null;
+  const stateEl = tracker ? $(STATE_SEL[tracker] || '#' + tracker + '-state') : null;
   if (stateEl) stateEl.textContent = 'importing…';
   try {
     const r = await send({ type: 'import', tracker });
     const n = tracker ? (r.created || 0) + (r.updated || 0)
       : (r.results || []).reduce((a, x) => a + (x.created || 0) + (x.updated || 0), 0);
-    if (stateEl) stateEl.textContent = `connected · ${n} series`;
+    if (stateEl) {
+      const bad = tracker ? null : (r.results || []).find((x) => x.error || x.note);
+      stateEl.textContent = r.note ? `connected · ${r.note}`
+        : n ? `connected · ${n} series`
+        : bad ? `connected · ${bad.error || bad.note}`
+        : 'connected · 0 series';
+      stateEl.className = 'state ' + (r.note || bad ? 'warn' : 'on');
+    }
     await refresh();
     return n;
   } catch (e) {
-    if (stateEl) stateEl.textContent = 'import failed: ' + e.message;
+    if (stateEl) { stateEl.textContent = 'import failed: ' + e.message; stateEl.className = 'state err'; }
+    showToast('import failed: ' + e.message);
     return 0;
   }
 }
@@ -208,7 +231,13 @@ $('#go').onclick = search;
 $('#q').addEventListener('keydown', (e) => { if (e.key === 'Enter') search(); });
 $('#import-all').onclick = async () => {
   const b = $('#import-all'); b.textContent = 'Importing…'; b.disabled = true;
-  try { await send({ type: 'import' }); } finally { b.textContent = 'Import from my trackers'; b.disabled = false; refresh(); }
+  try {
+    const r = await send({ type: 'import' });
+    const bad = (r?.results || []).filter((x) => x.error || x.note);
+    if (bad.length) showToast(bad.map((x) => `${x.tracker}: ${x.error || x.note}`).join(' · '));
+  } catch (e) {
+    showToast('import failed: ' + e.message);
+  } finally { b.textContent = 'Import from my trackers'; b.disabled = false; refresh(); }
 };
 $('#sync-all').onclick = async () => {
   const b = $('#sync-all'); b.textContent = 'Syncing…'; b.disabled = true;

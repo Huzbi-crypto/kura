@@ -156,6 +156,13 @@ export async function importTracker(trackerId) {
     mark(st, trackerId, { state: 'synced', chapter: row.chapter || 0, status: row.status || null, rating: row.rating || null });
     await ST.put(st);
   }
+  // an empty or unusable list is not a success: say why instead of reporting "0 series"
+  if (!rows.length) {
+    return { tracker: trackerId, rows: 0, created: 0, updated: 0, skipped: 0, note: `nothing in your ${t.meta.name} library to import` };
+  }
+  if (skipped === rows.length) {
+    return { tracker: trackerId, rows: rows.length, created: 0, updated: 0, skipped, note: `${t.meta.name} returned ${rows.length} entries but none had a usable title` };
+  }
   return { tracker: trackerId, rows: rows.length, created, updated, skipped };
 }
 
