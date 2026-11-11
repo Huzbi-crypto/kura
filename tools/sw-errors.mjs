@@ -82,7 +82,11 @@ const setupProbe = await send('Runtime.evaluate', {
     const vis = (el) => !!(el && el.offsetParent !== null);
     const inputs = [...document.querySelectorAll('#view-settings input')].filter(vis).length;
     const connects = [...document.querySelectorAll('#view-settings button')].filter(vis).map(b => b.id).filter(id => /connect$/.test(id));
-    return JSON.stringify({ visibleInputs: inputs, connectButtons: connects, state: [...document.querySelectorAll('#view-settings .state')].map(e => e.textContent) });
+    const fields = ['anilist-client','mal-client','mb-client'].map(id => {
+      const el = document.getElementById(id);
+      return { id, value: el.value, placeholder: (el.placeholder || '').slice(0, 34) };
+    });
+    return JSON.stringify({ visibleInputs: inputs, connectButtons: connects, fields, state: [...document.querySelectorAll('#view-settings .state')].map(e => e.textContent) });
   })()`, returnByValue: true,
 }, pageSession);
 console.log('setup probe:', setupProbe.result.value);

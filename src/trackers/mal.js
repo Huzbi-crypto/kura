@@ -8,8 +8,8 @@ const STATUS_IN = { plan_to_read: 'planning', reading: 'reading', completed: 'co
 
 // A published build ships the project's own MAL app + Worker so users can just click Connect.
 // Self-hosters override both in Setup; the client id is public, the secret lives only in the Worker.
-const DEFAULT_CLIENT_ID = '90679c18c60bfeaec1949de73dc632e9';
-const DEFAULT_WORKER = 'https://kura-mal.huzbipers-o-n-al.workers.dev';
+export const DEFAULT_CLIENT_ID = '90679c18c60bfeaec1949de73dc632e9';
+export const DEFAULT_WORKER = 'https://kura-mal.huzbipers-o-n-al.workers.dev';
 
 const K = { clientId: 'mal.clientId', worker: 'mal.worker', token: 'mal.token', refresh: 'mal.refresh', expires: 'mal.expires' };
 

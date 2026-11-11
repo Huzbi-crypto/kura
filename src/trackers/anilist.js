@@ -4,7 +4,7 @@ import { jsonFetch, emptyRemote } from './base.js';
 
 const API = 'https://graphql.anilist.co';
 // public client id of the Kura AniList app; implicit grant means there is no secret to protect
-const DEFAULT_CLIENT_ID = '56681';
+export const DEFAULT_CLIENT_ID = '56681';
 const TOKEN_KEY = 'anilist.token';
 const STATUS_OUT = { planning: 'PLANNING', reading: 'CURRENT', completed: 'COMPLETED', paused: 'PAUSED', dropped: 'DROPPED', rereading: 'REPEATING' };
 const STATUS_IN = Object.fromEntries(Object.entries(STATUS_OUT).map(([k, v]) => [v, k]));

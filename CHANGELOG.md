@@ -3,6 +3,14 @@
 All notable changes to Kura. Format: [Keep a Changelog](https://keepachangelog.com/), versioning
 follows [SemVer](https://semver.org/).
 
+## [0.5.3] — unreleased
+
+- **Advanced shows overrides, not Kura's own ids.** Older builds copied the built-in AniList/MAL
+  client id into storage, so the fields looked like personal settings. They are placeholders now
+  (`Kura's default — 56681`), stale copies are cleared, and empty always means "use Kura's app".
+  Nothing in that panel is per-user or secret: the ids ship inside the extension, the MAL secret
+  stays in the Worker, and an OAuth session never touches them.
+
 ## [0.5.2] — unreleased
 
 - **MangaBaka import reported nothing, including its own errors.** The import result was written to

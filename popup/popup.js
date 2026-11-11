@@ -174,10 +174,19 @@ async function paintState(sel, ok, extra = 'connected') {
 
 async function hydrateSettings() {
   const s = await chrome.storage.local.get(Object.values(KEYS));
-  $('#anilist-client').value = s[KEYS.anilistClient] || '';
-  $('#mal-client').value = s[KEYS.malClient] || '';
-  $('#mal-worker').value = s[KEYS.malWorker] || '';
-  $('#mb-client').value = s[KEYS.mbClient] || '';
+  // Kura's own ids are compiled in and identical for every user; they are shown as placeholders so
+  // an empty box means "use Kura's app", and a filled box means "the user brought their own".
+  // Older builds copied the default into storage, which read as if the user had set it.
+  const showOverride = async (sel, key, dflt) => {
+    const stored = s[key];
+    if (stored && stored === dflt) await chrome.storage.local.remove(key);
+    $(sel).value = stored && stored !== dflt ? stored : '';
+    $(sel).placeholder = dflt ? `Kura's default — ${dflt}` : 'optional';
+  };
+  await showOverride('#anilist-client', KEYS.anilistClient, anilist.DEFAULT_CLIENT_ID);
+  await showOverride('#mal-client', KEYS.malClient, mal.DEFAULT_CLIENT_ID);
+  await showOverride('#mal-worker', KEYS.malWorker, mal.DEFAULT_WORKER);
+  await showOverride('#mb-client', KEYS.mbClient, mangabaka.DEFAULT_CLIENT_ID);
   await paintState('#anilist-state', await anilist.meta.connected());
   await paintState('#mal-state', await mal.meta.connected());
   const kind = await mangabaka.connected();
