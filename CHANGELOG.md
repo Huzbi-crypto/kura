@@ -3,6 +3,20 @@
 All notable changes to Kura. Format: [Keep a Changelog](https://keepachangelog.com/), versioning
 follows [SemVer](https://semver.org/).
 
+## [0.3.0] — unreleased
+
+Import, real search results, and a pill that gets out of the way.
+
+- **List import**: on Connect (and from Setup or the empty library) Kura pulls your whole manga list
+  from each connected tracker and seeds the library, highest chapter winning.
+- **Search fixed**: MangaBaka's v1 search is used, so results show titles and covers instead of
+  blank rows. `/v2` puts the title in `titles[]` and the cover as a bare URL string — both misread.
+- **Covers**: missing covers are backfilled from MangaBaka metadata on library load.
+- **Reader pill**: fades out after ~6s and leaves a small corner dot; hover or a chapter change
+  brings it back. No longer swallows page clicks, and the leftover chapter input is fixed.
+- **Library payload fixed**: `library()` returned an array where the worker destructured
+  `{ items, connected }`, which blanked the popup.
+
 ## [0.2.0] — unreleased
 
 Zero-configuration connect.

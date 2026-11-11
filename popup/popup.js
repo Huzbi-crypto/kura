@@ -123,6 +123,23 @@ async function search() {
   }
 }
 
+/* ---------- import ---------- */
+async function runImport(tracker) {
+  const stateEl = tracker ? document.querySelector('#' + tracker + '-state') : null;
+  if (stateEl) stateEl.textContent = 'importing…';
+  try {
+    const r = await send({ type: 'import', tracker });
+    const n = tracker ? (r.created || 0) + (r.updated || 0)
+      : (r.results || []).reduce((a, x) => a + (x.created || 0) + (x.updated || 0), 0);
+    if (stateEl) stateEl.textContent = `connected · ${n} series`;
+    await refresh();
+    return n;
+  } catch (e) {
+    if (stateEl) stateEl.textContent = 'import failed: ' + e.message;
+    return 0;
+  }
+}
+
 /* ---------- settings ---------- */
 const KEYS = { anilistClient: 'anilist.clientId', malClient: 'mal.clientId', malWorker: 'mal.worker' };
 
@@ -147,18 +164,25 @@ function bindSettings() {
     else await chrome.storage.local.remove(KEYS.anilistClient);
     $('#anilist-state').textContent = 'waiting…';
     try { await anilist.connect(id || undefined); } catch (e) { $('#anilist-state').textContent = e.message; return; }
-    hydrateSettings(); refresh();
+    await runImport('anilist');
+    hydrateSettings();
   };
   $('#mal-connect').onclick = async () => {
     await mal.setConfig({ clientId: $('#mal-client').value, worker: $('#mal-worker').value });
     $('#mal-state').textContent = 'waiting…';
     try { await mal.connect(); } catch (e) { $('#mal-state').textContent = e.message; return; }
-    hydrateSettings(); refresh();
+    await runImport('mal');
+    hydrateSettings();
   };
   $('#mb-save').onclick = async () => {
     await mangabaka.setToken($('#mb-token').value);
-    hydrateSettings(); refresh();
+    await runImport('mangabaka');
+    hydrateSettings();
   };
+  for (const t of ['anilist', 'mal', 'mangabaka']) {
+    const b = $('#import-' + t);
+    if (b) b.onclick = () => runImport(t);
+  }
 }
 
 /* ---------- boot ---------- */
@@ -166,6 +190,10 @@ document.querySelectorAll('.tabs button').forEach((b) => (b.onclick = () => show
 $('#filter').oninput = renderLibrary;
 $('#go').onclick = search;
 $('#q').addEventListener('keydown', (e) => { if (e.key === 'Enter') search(); });
+$('#import-all').onclick = async () => {
+  const b = $('#import-all'); b.textContent = 'Importing…'; b.disabled = true;
+  try { await send({ type: 'import' }); } finally { b.textContent = 'Import from my trackers'; b.disabled = false; refresh(); }
+};
 $('#sync-all').onclick = async () => {
   const b = $('#sync-all'); b.textContent = 'Syncing…'; b.disabled = true;
   try { await send({ type: 'sync' }); } finally { b.textContent = 'Sync all'; b.disabled = false; refresh(); }

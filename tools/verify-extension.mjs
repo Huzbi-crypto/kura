@@ -61,6 +61,17 @@ const swEval = await send('Runtime.evaluate', {
   returnByValue: true,
 }, swSession);
 console.log('message router:', swEval.result.value);
+const modCheck = await send('Runtime.evaluate', {
+  expression: `(async () => {
+    try {
+      const db = await import(chrome.runtime.getURL('src/db.js'));
+      const sync = await import(chrome.runtime.getURL('src/sync.js'));
+      const bg = await import(chrome.runtime.getURL('src/background.js')).catch(e => ({ __err: e.message }));
+      return JSON.stringify({ db: Object.keys(db), sync: Object.keys(sync), bg: bg.__err || 'loaded' });
+    } catch (e) { return 'IMPORT FAIL: ' + (e && e.message); }
+  })()`, awaitPromise: true, returnByValue: true,
+}, swSession);
+console.log('modules:', modCheck.result.value);
 
 // 3. open the popup page and check it painted
 const page = await send('Target.createTarget', { url: 'about:blank' });

@@ -81,6 +81,38 @@ export async function push(series, st) {
   return d.data?.SaveMediaListEntry || null;
 }
 
+/** pull the whole AniList manga list so the library can start from it */
+export async function importList() {
+  const v = await gql('query { Viewer { id name } }');
+  const userId = v.data?.Viewer?.id;
+  if (!userId) throw new Error('AniList: no viewer id');
+  const d = await gql(`query ($u: Int) {
+    MediaListCollection(userId: $u, type: MANGA) {
+      lists { entries { mediaId progress progressVolumes status score media {
+        id title { romaji english } coverImage { large } chapters } } }
+    }
+  }`, { u: userId });
+  const lists = d.data?.MediaListCollection?.lists || [];
+  const out = [];
+  for (const list of lists) {
+    for (const e of list.entries || []) {
+      const m = e.media || {};
+      out.push({
+        tracker: 'anilist',
+        id: e.mediaId || m.id,
+        title: m.title?.english || m.title?.romaji || null,
+        cover: m.coverImage?.large || null,
+        total: m.chapters || 0,
+        chapter: e.progress || 0,
+        volume: e.progressVolumes || 0,
+        status: STATUS_IN[e.status] || null,
+        rating: e.score || null,
+      });
+    }
+  }
+  return out;
+}
+
 export async function search(query) {
   const d = await gql(`query ($q: String) { Page(perPage: 8) { media(search: $q, type: MANGA) { id title { romaji english } coverImage { large } chapters } } }`, { q: query });
   return (d.data?.Page?.media || []).map((m) => ({ tracker: 'anilist', id: m.id, title: m.title.english || m.title.romaji, cover: m.coverImage?.large, total: m.chapters || 0 }));

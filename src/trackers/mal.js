@@ -110,6 +110,35 @@ export async function push(series, st) {
   return api(`/manga/${id}/my_list_status`, { method: 'PATCH', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: form.toString() });
 }
 
+/** pull the whole MAL manga list (paged) */
+export async function importList() {
+  const out = [];
+  let offset = 0;
+  const fields = 'list_status,num_chapters,num_volumes,main_picture,title';
+  while (offset < 5000) {
+    const d = await api(`/users/@me/mangalist?fields=${fields}&limit=1000&offset=${offset}&nsfw=true`);
+    const rows = d?.data || [];
+    for (const r of rows) {
+      const n = r.node || {};
+      const s = r.list_status || {};
+      out.push({
+        tracker: 'mal',
+        id: n.id,
+        title: n.title || null,
+        cover: n.main_picture?.medium || n.main_picture?.large || null,
+        total: n.num_chapters || 0,
+        chapter: s.num_chapters_read || 0,
+        volume: s.num_volumes_read || 0,
+        status: STATUS_IN[s.status] || null,
+        rating: s.score || null,
+      });
+    }
+    if (rows.length < 1000) break;
+    offset += 1000;
+  }
+  return out;
+}
+
 export async function search(query) {
   const d = await api(`/manga?q=${encodeURIComponent(query)}&limit=8&fields=title,main_picture,num_chapters`);
   return (d?.data || []).map((r) => ({ tracker: 'mal', id: r.node.id, title: r.node.title, cover: r.node.main_picture?.medium, total: r.node.num_chapters || 0 }));

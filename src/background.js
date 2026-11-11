@@ -1,6 +1,6 @@
 // background.js — service worker: routes reader events, keeps the retry queue warm.
 import { series as S, state as ST, normTitle } from './db.js';
-import { recordProgress, drainQueue, syncSeries, pullInto, pushOut, connected } from './sync.js';
+import { recordProgress, drainQueue, syncSeries, pullInto, pushOut, connected, importTracker, backfillCovers, library as libAll } from './sync.js';
 import { newSeries, resolveLinks } from './mapping.js';
 import * as mangabaka from './trackers/mangabaka.js';
 
@@ -42,14 +42,21 @@ const handlers = {
     return { ok: true, created, seriesId: s.id, title: s.title, chapter: st?.chapter ?? chapter, trackers: st?.trackers || {} };
   },
   async library() {
-    const [all, states, conn] = await Promise.all([S.all(), ST.all(), connected()]);
-    const byId = Object.fromEntries(states.map((x) => [x.seriesId, x]));
-    return {
-      connected: conn,
-      items: all
-        .map((s) => ({ ...s, state: byId[s.id] || { seriesId: s.id, chapter: 0, trackers: {} } }))
-        .sort((a, b) => (b.state.updatedAt || b.createdAt) - (a.state.updatedAt || a.createdAt)),
-    };
+    try { await backfillCovers(); } catch (e) { log('cover backfill skipped', e.message); }
+    return libAll();
+  },
+  /** pull one tracker's whole list in; called right after Connect */
+  async import({ tracker }) {
+    if (!tracker) {
+      const conn = await connected();
+      const results = [];
+      for (const [id, ok] of Object.entries(conn)) {
+        if (!ok) continue;
+        try { results.push(await importTracker(id)); } catch (e) { results.push({ tracker: id, error: String(e.message || e) }); }
+      }
+      return { results };
+    }
+    return importTracker(tracker);
   },
   async sync({ seriesId }) {
     if (seriesId) return syncSeries(seriesId);

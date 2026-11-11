@@ -26,7 +26,8 @@
       <div id="grid" class="grid"></div>
       <div id="empty" class="empty" hidden>
         <p>Nothing yet.</p>
-        <p class="muted">Open a chapter on one of your reader sites — Kura adds it automatically — or add a series from <b>Add</b>.</p>
+        <p class="muted">Import what your trackers already know, or open a chapter on a reader site and Kura adds it automatically.</p>
+        <p><button id="import-all" class="primary">Import from my trackers</button></p>
       </div>
     </section>
 
@@ -45,6 +46,7 @@
         <input id="anilist-client" placeholder="optional: your own client id" />
         <div class="row">
           <button id="anilist-connect">Connect</button>
+          <button id="import-anilist">Import</button>
           <span id="anilist-state" class="state"></span>
         </div>
       </div>
@@ -56,6 +58,7 @@
         <input id="mal-worker" placeholder="optional: your own Worker URL" />
         <div class="row">
           <button id="mal-connect">Connect</button>
+          <button id="import-mal">Import</button>
           <span id="mal-state" class="state"></span>
         </div>
       </div>
@@ -66,6 +69,7 @@
         <input id="mb-token" placeholder="MangaBaka token" />
         <div class="row">
           <button id="mb-save">Save</button>
+          <button id="import-mangabaka">Import</button>
           <span id="mb-state" class="state"></span>
         </div>
       </div>

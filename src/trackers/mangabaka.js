@@ -58,16 +58,62 @@ export async function push(series, st) {
   return d?.data || null;
 }
 
+const seriesTitle = (s) => s.title || s.romanized_title || s.titles?.find?.((t) => t.is_primary)?.title
+  || (Array.isArray(s.titles) ? s.titles[0]?.title : s.titles) || s.name || '';
+
+const coverUrl = (s) => {
+  const c = s.cover;
+  if (!c) return null;
+  if (typeof c === 'string') return c;
+  if (typeof c.raw === 'string') return c.raw;          // v2: raw is a bare URL
+  return c.raw?.url || c.x150?.url || c.large || c.medium || null;
+};
+
 export async function search(query) {
-  const d = await jsonFetch(`https://api.mangabaka.org/v2/series/search?q=${encodeURIComponent(query)}&type=manga`, { headers: { Accept: 'application/json' } });
-  const rows = d?.data || d?.results || [];
-  return rows.slice(0, 8).map((s) => ({
+  let rows = [];
+  try {
+    const d = await jsonFetch(`https://api.mangabaka.org/v1/series/search?q=${encodeURIComponent(query)}&type=manga`, { headers: { Accept: 'application/json' } });
+    rows = d?.data || d?.results || [];
+  } catch {
+    const d = await jsonFetch(`https://api.mangabaka.org/v2/series/search?q=${encodeURIComponent(query)}&type=manga&limit=10`, { headers: { Accept: 'application/json' } });
+    rows = d?.data || [];
+  }
+  return rows.slice(0, 10).map((s) => ({
     tracker: 'mangabaka',
     id: s.id,
-    title: s.title || s.romanized_title || s.name,
-    cover: s.cover?.raw?.url || s.cover?.x150?.url || s.cover?.large || null,
-    total: s.final_volume || s.total_chapters || 0,
-  }));
+    title: seriesTitle(s),
+    cover: coverUrl(s),
+    total: s.total_chapters || s.final_volume || 0,
+  })).filter((r) => r.id && r.title);
+}
+
+/** pull the user's MangaBaka library so it can seed the local one */
+export async function importList() {
+  const out = [];
+  let page = 1;
+  while (page <= 20) {
+    const d = await api(`/my/library?limit=100&page=${page}`);
+    const rows = d?.data || [];
+    if (!rows.length) break;
+    for (const e of rows) {
+      const seriesId = e.series_id ?? e.series?.id ?? e.id ?? null;
+      if (!seriesId) continue;
+      out.push({
+        tracker: 'mangabaka',
+        id: seriesId,
+        title: seriesTitle(e.series || e) || null,
+        cover: coverUrl(e.series || e),
+        total: (e.series || e).total_chapters || 0,
+        chapter: e.progress_chapter || 0,
+        volume: e.progress_volume || 0,
+        status: STATUS_IN[e.state] || null,
+        rating: e.rating == null ? null : Math.round(e.rating / 10),
+      });
+    }
+    if (rows.length < 100) break;
+    page++;
+  }
+  return out;
 }
 
 /** bridge: the same series on another tracker -> the MangaBaka series */
@@ -83,6 +129,14 @@ export async function fromSource(provider, externalId) {
     if (e.status === 404) return null;
     throw e;
   }
+}
+
+/** series metadata by id: cover, chapter count, and the bridged source ids */
+export async function metaFor(id) {
+  const d = await jsonFetch(`https://api.mangabaka.org/v1/series/${id}`, { headers: { Accept: 'application/json' } });
+  const s = d?.data || d;
+  if (!s?.id) return null;
+  return { cover: coverUrl(s), total: s.total_chapters || s.final_volume || 0, title: seriesTitle(s), source: s.source, raw: s };
 }
 
 export const meta = { id: 'mangabaka', name: 'MangaBaka', colour: '#e35d3a', connected: async () => Boolean(await token()) };
