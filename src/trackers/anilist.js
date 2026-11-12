@@ -114,8 +114,18 @@ export async function importList() {
 }
 
 export async function search(query) {
-  const d = await gql(`query ($q: String) { Page(perPage: 8) { media(search: $q, type: MANGA) { id title { romaji english } coverImage { large } chapters } } }`, { q: query });
-  return (d.data?.Page?.media || []).map((m) => ({ tracker: 'anilist', id: m.id, title: m.title.english || m.title.romaji, cover: m.coverImage?.large, total: m.chapters || 0 }));
+  const d = await gql(`query ($q: String) { Page(perPage: 8) { media(search: $q, type: MANGA) {
+    id title { romaji english native } synonyms coverImage { large } chapters } } }`, { q: query });
+  return (d.data?.Page?.media || []).map((m) => ({
+    tracker: 'anilist',
+    id: m.id,
+    title: m.title.english || m.title.romaji,
+    // a reader title often only exists as a synonym ("I Only Want to Beat You" vs the romaji),
+    // so every known title travels with the hit and the matcher scores the best of them
+    alt: [m.title?.english, m.title?.romaji, m.title?.native, ...(m.synonyms || [])].filter(Boolean),
+    cover: m.coverImage?.large,
+    total: m.chapters || 0,
+  }));
 }
 
 export const meta = { id: 'anilist', name: 'AniList', colour: '#02a9ff', connected: async () => Boolean(await token()) };

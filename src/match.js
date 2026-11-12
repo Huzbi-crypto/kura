@@ -34,6 +34,17 @@ export function similarity(a, b) {
   return total ? (2 * shared) / total : 0;
 }
 
+/** best score across every title a tracker reports for one hit */
+export function bestTitleScore(title, titles) {
+  const mine = normalizeTitle(title);
+  let best = { score: 0, title: null };
+  for (const t of titles.filter(Boolean)) {
+    const score = similarity(normalizeTitle(t), mine);
+    if (score > best.score) best = { score, title: t };
+  }
+  return best;
+}
+
 /**
  * Best candidate for a reader title. Returns null when nothing is close enough, so an unknown
  * series is still created (the reader page is real even if the library has never heard of it).

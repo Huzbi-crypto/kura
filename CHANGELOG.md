@@ -3,6 +3,24 @@
 All notable changes to Kura. Format: [Keep a Changelog](https://keepachangelog.com/), versioning
 follows [SemVer](https://semver.org/).
 
+## [0.7.1] — unreleased
+
+Two bugs that between them meant MangaBaka and AniList could never be linked.
+
+- **MangaBaka lookups always returned null.** `/v1/source/{provider}/{id}` answers
+  `{ data: { source_response, series: [ ... ] } }`, and the code read `data.id`. Every bridge from a
+  MAL or AniList id to a MangaBaka series silently failed, for every series, since the first build.
+  Verified against the live API: AniList 135561 now resolves to MangaBaka **1471**, "I Only Want to
+  Beat You".
+- **Title matching ignored synonyms.** AniList's search index knows "I Only Want to Beat You", but
+  its main title is the romaji "Oroji Neoreul Igigo Sipeo", so scoring against `title` alone gave
+  0.00 and the link was rejected as "too different". Search results now carry `alt` (english, romaji,
+  native, synonyms for AniList; alternative titles for MAL; every title for MangaBaka) and the match
+  takes the best of them — 1.00 for this series.
+- `bestTitleScore` and `pickSourceSeries` are pure functions with tests built from the real captured
+  responses (`tools/test-match.mjs`, `tools/test-bridge.mjs`), so this class of bug fails a test
+  instead of shipping.
+
 ## [0.7.0] — unreleased
 
 **Opening a chapter no longer counts as reading it.**

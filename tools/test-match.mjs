@@ -1,5 +1,5 @@
 // test-match.mjs — the reader-title matcher must accept decorated titles and refuse near-misses.
-import { normalizeTitle, similarity, bestMatch } from '../src/match.js';
+import { normalizeTitle, similarity, bestMatch, bestTitleScore } from '../src/match.js';
 
 const library = [
   { id: 1, title: 'Solo Leveling', normTitle: normalizeTitle('Solo Leveling') },
@@ -40,6 +40,22 @@ for (const title of shouldNotMatch) {
   if (!ok) fail++;
   console.log(`${ok ? 'ok  ' : 'FAIL'}  reject  ${title.padEnd(34)} -> ${m ? `${m.series.title} (${m.score.toFixed(2)})` : 'none'}`);
 }
+// real case: the reader says "I Only Want To Beat You"; AniList's main title is the romaji,
+// and the English name exists only as a synonym. Matching must score every known title.
+const anilistHit = {
+  title: 'Oroji Neoreul Igigo Sipeo',
+  alt: ['Oroji Neoreul Igigo Sipeo', 'I Only Want to Beat You  ', '오로지 너를 이기고 싶어'],
+};
+const syn = bestTitleScore('I Only Want To Beat You', [anilistHit.title, ...anilistHit.alt]);
+const synOk = syn.score >= 0.85;
+if (!synOk) fail++;
+console.log(`${synOk ? 'ok  ' : 'FAIL'}  synonym match    -> ${syn.title} (${syn.score.toFixed(2)})`);
+
+const romajiOnly = bestTitleScore('I Only Want To Beat You', [anilistHit.title]);
+const rejected = romajiOnly.score < 0.85;
+if (!rejected) fail++;
+console.log(`${rejected ? 'ok  ' : 'FAIL'}  romaji alone is not enough (${romajiOnly.score.toFixed(2)}) - this was the bug`);
+
 // direct checks used by the reader overlay path
 const checks = [
   ['normalize keeps words', normalizeTitle('Solo Leveling (Official)') === 'solo leveling'],

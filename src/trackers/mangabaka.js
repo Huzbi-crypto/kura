@@ -232,6 +232,10 @@ export async function search(query) {
     tracker: 'mangabaka',
     id: s.id,
     title: seriesTitle(s),
+    alt: [
+      ...(Array.isArray(s.titles) ? s.titles.map((t) => t.title) : []),
+      s.romanized_title, s.native_title,
+    ].filter(Boolean),
     cover: coverUrl(s),
     total: s.total_chapters || s.final_volume || 0,
   })).filter((r) => r.id && r.title);
@@ -286,6 +290,13 @@ export async function libraryCount() {
   }
 }
 
+/** the /source/ endpoint answers { data: { source_response, series: [...] } } */
+export function pickSourceSeries(payload) {
+  const p = payload?.data ?? payload;
+  if (Array.isArray(p?.series)) return p.series[0] || null;
+  return p?.id ? p : null;
+}
+
 /** bridge: the same series on another tracker -> the MangaBaka series */
 export async function fromSource(provider, externalId) {
   const map = { anilist: 'anilist', mal: 'my-anime-list' };
@@ -293,7 +304,9 @@ export async function fromSource(provider, externalId) {
   if (!p) return null;
   try {
     const d = await jsonFetch(`${API}/v1/source/${p}/${externalId}`, { headers: { Accept: 'application/json' } });
-    const s = d?.data || d;
+    // the endpoint answers { data: { source_response, series: [ ... ] } }; reading data.id here
+    // meant every lookup returned null, so MangaBaka could never be linked to any series
+    const s = pickSourceSeries(d);
     return s?.id ? s : null;
   } catch (e) {
     if (e.status === 404) return null;

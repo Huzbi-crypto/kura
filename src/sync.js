@@ -5,7 +5,7 @@ import * as mangabaka from './trackers/mangabaka.js';
 import * as mal from './trackers/mal.js';
 import { series as S, state as ST, queue as Q, normTitle } from './db.js';
 import { resolveLinks, newSeries } from './mapping.js';
-import { normalizeTitle, similarity } from './match.js';
+import { bestTitleScore } from './match.js';
 
 export const trackers = [anilist, mangabaka, mal];
 export const trackerMeta = trackers.map((t) => t.meta);
@@ -59,9 +59,11 @@ export async function linkByTitle(s, { force = false } = {}) {
     let hit = null;
     try { hit = (await t.search(s.title))[0] || null; } catch (e) { log.push(`${id}: search failed (${e.message})`); continue; }
     if (!hit?.id) { log.push(`${id}: no match`); continue; }
-    const score = similarity(normalizeTitle(hit.title || ''), normalizeTitle(s.title));
-    if (score >= 0.85) { s.links[id] = hit.id; log.push(`${id}: linked "${hit.title}" (${score.toFixed(2)})`); }
-    else log.push(`${id}: best hit "${hit.title}" too different (${score.toFixed(2)})`);
+    // score against every title the tracker knows: a reader title is often only a synonym
+    // ("I Only Want to Beat You" is an AniList synonym, while its main title is romaji)
+    const best = bestTitleScore(s.title, [hit.title, ...(hit.alt || [])]);
+    if (best.score >= 0.85) { s.links[id] = hit.id; log.push(`${id}: linked "${best.title}" (${best.score.toFixed(2)})`); }
+    else log.push(`${id}: best hit "${best.title}" too different (${best.score.toFixed(2)})`);
   }
   if (log.some((l) => l.includes('linked'))) { await resolveLinks(s); await S.put(s); }
   return { links: s.links, log };

@@ -140,8 +140,18 @@ export async function importList() {
 }
 
 export async function search(query) {
-  const d = await api(`/manga?q=${encodeURIComponent(query)}&limit=8&fields=title,main_picture,num_chapters`);
-  return (d?.data || []).map((r) => ({ tracker: 'mal', id: r.node.id, title: r.node.title, cover: r.node.main_picture?.medium, total: r.node.num_chapters || 0 }));
+  const d = await api(`/manga?q=${encodeURIComponent(query)}&limit=8&fields=title,alternative_titles,main_picture,num_chapters`);
+  return (d?.data || []).map((r) => {
+    const a = r.node.alternative_titles || {};
+    return {
+      tracker: 'mal',
+      id: r.node.id,
+      title: r.node.title,
+      alt: [a.en, a.ja, a.synonyms?.[0], ...(a.synonyms || [])].filter(Boolean),
+      cover: r.node.main_picture?.medium,
+      total: r.node.num_chapters || 0,
+    };
+  });
 }
 
 export const meta = { id: 'mal', name: 'MyAnimeList', colour: '#2e51a2', connected: async () => Boolean(await token()) };
