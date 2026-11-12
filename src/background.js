@@ -1,8 +1,10 @@
 // background.js — service worker: routes reader events, keeps the retry queue warm.
 import { series as S, state as ST, normTitle } from './db.js';
-import { recordProgress, drainQueue, syncSeries, pullInto, pushOut, connected, importTracker, backfillCovers, library as libAll } from './sync.js';
+import { recordProgress, drainQueue, syncSeries, pullInto, pushOut, connected, importTracker, backfillCovers, library as libAll, linkByTitle } from './sync.js';
 import { newSeries, resolveLinks } from './mapping.js';
+import { bestMatch, normalizeTitle } from './match.js';
 import * as mangabaka from './trackers/mangabaka.js';
+import { logEvent, readEvents, clearEvents } from './diag.js';
 
 const log = (...a) => console.log('[kura]', ...a);
 
@@ -23,24 +25,54 @@ async function ensureSeries(title, host) {
   const norm = normTitle(title);
   let s = await S.byTitle(norm);
   if (s) return { series: s, created: false };
+
+  // readers decorate titles; an unmatched page becomes a duplicate entry with no links, which
+  // never syncs. Try a tolerant match over the local library before creating anything new.
+  const fuzzy = bestMatch(title, await S.all());
+  if (fuzzy) {
+    await logEvent('match', `matched "${title}" to existing "${fuzzy.series.title}" (${fuzzy.how} ${fuzzy.score.toFixed(2)})`);
+    return { series: fuzzy.series, created: false };
+  }
   // try the metadata service before creating a bare entry
   let meta = null;
   try { meta = (await mangabaka.search(title))[0] || null; } catch { /* offline is fine */ }
   s = newSeries({ title: meta?.title || title, cover: meta?.cover || null, total: meta?.total || 0, links: meta?.id ? { mangabaka: meta.id } : {} });
+  if (!meta?.id) await logEvent('match', `no MangaBaka result for "${title}" — new series with no links yet`, { host });
   s.sourceHost = host;
   if (s.links.mangabaka) { try { await resolveLinks(s); } catch { /* bridge is best effort */ } }
+  s.normTitle = normalizeTitle(s.title) || s.normTitle;
   await S.put(s);
   return { series: s, created: true };
 }
 
 const handlers = {
   /** a reader page told us which chapter is open */
-  async reading({ title, chapter, volume, url, host }) {
-    if (!title || !chapter) return { ok: false, reason: 'no series/chapter detected' };
+  async reading({ title, chapter, volume, url, host, completed }) {
+    if (!title || !chapter) {
+      await logEvent('reading', 'page seen but no series/chapter parsed', { host, url: String(url || '').slice(0, 120) });
+      return { ok: false, reason: 'no series/chapter detected' };
+    }
     const { series: s, created } = await ensureSeries(title, host);
+    // nothing to push to yet? attach tracker ids by title before reporting progress
+    if (!Object.keys(s.links || {}).length) {
+      const { log: line } = await linkByTitle(s, { force: true });
+      await logEvent('match', `series had no tracker links — tried title matching`, { title: s.title, detail: line.join('; ') });
+    }
+    await logEvent('reading', created ? 'new series added' : 'matched local series', { host, title, chapter, completed: Boolean(completed) });
     const st = await recordProgress(s.id, chapter, { volume });
-    return { ok: true, created, seriesId: s.id, title: s.title, chapter: st?.chapter ?? chapter, trackers: st?.trackers || {} };
+
+    // log what each tracker actually answered — a silent 401 here was invisible before
+    const marks = st?.trackers || {};
+    const linked = Object.keys(s.links || {});
+    if (!linked.length) await logEvent('sync', 'series has no tracker links', { title: s.title });
+    for (const id of linked) {
+      const m = marks[id] || {};
+      await logEvent('sync', `${id}: ${m.state || 'not attempted'}${m.error ? ' — ' + m.error : ''}`, { title: s.title, chapter });
+    }
+    return { ok: true, created, seriesId: s.id, title: s.title, chapter: st?.chapter ?? chapter, trackers: marks };
   },
+  async diag() { return { events: await readEvents(30) }; },
+  async clearDiag() { await clearEvents(); return { ok: true }; },
   async library() {
     try { await backfillCovers(); } catch (e) { log('cover backfill skipped', e.message); }
     return libAll();

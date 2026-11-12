@@ -90,6 +90,16 @@ const setupProbe = await send('Runtime.evaluate', {
   })()`, returnByValue: true,
 }, pageSession);
 console.log('setup probe:', setupProbe.result.value);
+// integration: a reader event must leave a trail in the activity log
+const trail = await send('Runtime.evaluate', {
+  expression: `(async () => {
+    const r1 = await chrome.runtime.sendMessage({ type: 'reading', title: 'Verification Manga', chapter: 3, host: 'atsu.moe', url: 'https://atsu.moe/x' });
+    const d = await chrome.runtime.sendMessage({ type: 'diag' });
+    return JSON.stringify({ reading: { ok: r1.ok, chapter: r1.chapter }, events: (d.events || []).slice(0, 4).map(e => e.msg) });
+  })()`, awaitPromise: true, returnByValue: true,
+}, pageSession);
+console.log('activity trail:', trail.result.value);
+
 const shot = await send('Page.captureScreenshot', { format: 'png' }, pageSession);
 const { writeFileSync } = await import('node:fs');
 writeFileSync('C:/Users/huzbi/Projects/kura/debug-setup.png', Buffer.from(shot.data, 'base64'));

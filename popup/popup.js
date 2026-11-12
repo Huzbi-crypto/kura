@@ -194,7 +194,34 @@ async function hydrateSettings() {
   $('#redirects').textContent = [chrome.identity.getRedirectURL('anilist'), chrome.identity.getRedirectURL('mal'), chrome.identity.getRedirectURL('mangabaka')].join('\n');
 }
 
+async function loadDiag() {
+  const box = $('#diag-log');
+  if (!box) return;
+  try {
+    const r = await send({ type: 'diag' });
+    const events = r?.events || [];
+    $('#diag-count').textContent = events.length ? `${events.length} recent` : '';
+    box.textContent = events.length
+      ? events.map((e) => {
+        const t = new Date(e.t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const extra = e.data && (e.data.host || e.data.title)
+          ? ' · ' + [e.data.host, e.data.title, e.data.chapter != null ? 'ch ' + e.data.chapter : ''].filter(Boolean).join(' / ')
+          : '';
+        return `${t}  ${e.msg}${extra}`;
+      }).join('\n')
+      : 'no events yet — open a chapter on a reader site';
+  } catch (e) {
+    box.textContent = 'could not read activity: ' + e.message;
+  }
+  const sites = (chrome.runtime.getManifest().content_scripts || [])
+    .flatMap((c) => c.matches.map((m) => m.replace(/^https:\/\//, '').replace(/\/\*$/, '')))
+    .join(', ');
+  $('#watch-sites').textContent = 'Reader sites Kura watches: ' + (sites || 'none');
+}
+
 function bindSettings() {
+  $('#diag-refresh').onclick = () => loadDiag();
+  $('#diag-clear').onclick = async () => { await send({ type: 'clearDiag' }); loadDiag(); };
   $('#anilist-connect').onclick = async () => {
     const id = $('#anilist-client').value.trim();
     if (id) await chrome.storage.local.set({ [KEYS.anilistClient]: id });
@@ -234,7 +261,7 @@ function bindSettings() {
 }
 
 /* ---------- boot ---------- */
-document.querySelectorAll('.tabs button').forEach((b) => (b.onclick = () => show(b.dataset.view)));
+document.querySelectorAll('.tabs button').forEach((b) => (b.onclick = () => { show(b.dataset.view); if (b.dataset.view === 'settings') loadDiag(); }));
 $('#filter').oninput = renderLibrary;
 $('#go').onclick = search;
 $('#q').addEventListener('keydown', (e) => { if (e.key === 'Enter') search(); });

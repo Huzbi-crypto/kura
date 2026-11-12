@@ -3,6 +3,23 @@
 All notable changes to Kura. Format: [Keep a Changelog](https://keepachangelog.com/), versioning
 follows [SemVer](https://semver.org/).
 
+## [0.6.0] — unreleased
+
+The reading loop, made observable and made to actually reach the trackers.
+
+- **In-chapter progress**: the pill shows a percentage and a thin bar for how far through the
+  chapter you are, following whichever element actually scrolls (readers often nest the pages).
+- **Chapter finished**: reaching the end (~95%) sends a completion event, turns the indicator green
+  with a ✓, and saves progress — the missing "you read this chapter" signal.
+- **Activity log in Setup**: every reader event, match decision and per-tracker result is recorded
+  locally (last 60). A silent 401 or an unmatched title is now a readable line instead of a mystery.
+- **Title matching**: reader pages decorate titles (`(Official)`, `- Vol. 2`, `[Latest]`). Matching
+  is tolerant now, so a page maps onto the series you already track instead of creating a duplicate
+  entry with no tracker links — which is why MAL/AniList stayed put while MangaBaka moved.
+- **Auto-linking**: a series first seen on a reader page has its AniList/MAL/MangaBaka ids resolved
+  by title, then via the MangaBaka bridge, so it can sync at all.
+- **Fixed**: the manual chapter input stayed visible because `all: unset` overrode `[hidden]`.
+
 ## [0.5.3] — unreleased
 
 - **Advanced shows overrides, not Kura's own ids.** Older builds copied the built-in AniList/MAL

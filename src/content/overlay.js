@@ -1,7 +1,7 @@
 // overlay.js — reader pill for manga sites.
 // Classic script (no imports). Reads the open series/chapter, reports progress to the service
-// worker, and stays out of the way: it fades out after a few seconds and leaves a small dot in
-// the corner that brings it back on hover.
+// worker, shows how far through the chapter you are, and reports when you reach the end.
+// It stays out of the way: it fades out after a few seconds and leaves a small dot in the corner.
 (() => {
   if (window.__kuraLoaded) return;
   window.__kuraLoaded = true;
@@ -41,6 +41,28 @@
     return { title, chapter: chapter ? Number(chapter) : null, host, url: location.href };
   }
 
+  /** the element that actually scrolls: readers often put the pages in an inner container */
+  function scroller() {
+    const de = document.scrollingElement || document.documentElement;
+    if (de && de.scrollHeight - de.clientHeight > 80) return de;
+    let best = null;
+    for (const el of document.querySelectorAll('div, main, section')) {
+      const cs = getComputedStyle(el);
+      if (!/(auto|scroll)/.test(cs.overflowY)) continue;
+      const span = el.scrollHeight - el.clientHeight;
+      if (span > 120 && (!best || span > best.scrollHeight - best.clientHeight)) best = el;
+    }
+    return best || de;
+  }
+
+  function readPercent() {
+    const el = scroller();
+    if (!el) return 0;
+    const max = el.scrollHeight - el.clientHeight;
+    if (max <= 8) return 100; // a one-screen chapter is read as soon as you see it
+    return Math.min(100, Math.max(0, Math.round((el.scrollTop / max) * 100)));
+  }
+
   const CSS = `
     :host { all: initial; }
     .wrap {
@@ -57,6 +79,11 @@
     }
     .wrap.idle .pill { opacity: 0; transform: translateY(6px); pointer-events: none; }
     .pill b { font-weight: 650; color: #fff; }
+    .read { color: #a9a9b6; font-variant-numeric: tabular-nums; }
+    .read.done { color: #46d39a; }
+    .track { position: relative; width: 44px; height: 3px; border-radius: 2px; background: #2c2c36; overflow: hidden; }
+    .track i { position: absolute; inset: 0 auto 0 0; width: 0; background: #f0526b; transition: width .18s ease; }
+    .track.done i { background: #46d39a; }
     .dots { display: flex; gap: 4px; }
     .dot { width: 7px; height: 7px; border-radius: 50%; background: #3a3a45; }
     .dot.synced { background: #46d39a; }
@@ -72,7 +99,9 @@
       color: #f4f4f5; font: 500 12px/1 system-ui, sans-serif; text-align: center;
     }
     input.ch::-webkit-outer-spin-button, input.ch::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-    .toast { color: #9a9aa5; font-weight: 400; max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    /* all: unset beats the UA rule for [hidden], so hide it explicitly */
+    input.ch[hidden] { display: none; }
+    .toast { color: #9a9aa5; font-weight: 400; max-width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .handle {
       width: 22px; height: 22px; border-radius: 50%; background: #15151a; border: 1px solid #2a2a33;
       color: #8b8b98; font: 700 10px/20px system-ui, sans-serif; text-align: center;
@@ -91,6 +120,8 @@
   wrap.innerHTML = `
     <div class="pill">
       <span class="label">…</span>
+      <span class="read">0%</span>
+      <div class="track"><i></i></div>
       <div class="dots"></div>
       <input class="ch" type="number" min="0" step="0.1" placeholder="ch" hidden />
       <button title="Mark chapter read">+1</button>
@@ -102,12 +133,17 @@
   const pill = wrap.querySelector('.pill');
   const dots = wrap.querySelector('.dots');
   const label = wrap.querySelector('.label');
+  const readEl = wrap.querySelector('.read');
+  const track = wrap.querySelector('.track');
+  const bar = track.querySelector('i');
   const toast = wrap.querySelector('.toast');
   const chInput = wrap.querySelector('input.ch');
   const action = wrap.querySelector('button');
 
   let current = null;
   let hideTimer = null;
+  let completedFor = null;
+  let lastPct = -1;
   const IDLE_AFTER = 6000;
 
   function reveal(ms = IDLE_AFTER) {
@@ -137,15 +173,29 @@
     }
   }
 
+  function paintProgress(pct, done) {
+    readEl.textContent = done ? '✓ read' : `${pct}%`;
+    readEl.className = 'read' + (done ? ' done' : '');
+    bar.style.width = `${done ? 100 : pct}%`;
+    track.className = 'track' + (done ? ' done' : '');
+  }
+
   const send = (type, payload) => chrome.runtime.sendMessage({ type, ...payload });
-  const flash = (msg, ms = 1800) => { toast.textContent = msg; setTimeout(() => { if (toast.textContent === msg) toast.textContent = ''; }, ms); };
+  const flash = (msg, ms = 2200) => { toast.textContent = msg; setTimeout(() => { if (toast.textContent === msg) toast.textContent = ''; }, ms); };
 
   async function report(force = false) {
     const d = detect();
-    if (!d.title) { hide(); return; }
+    if (!d.title) {
+      // tell the worker anyway: "Kura ran here but could not read the page" is the log line
+      // that explains a silent no-op on a reader layout we do not parse yet
+      send('reading', { ...d, title: '', chapter: null });
+      hide();
+      return;
+    }
     const key = d.title + '|' + (d.chapter ?? '?');
     if (!force && current === key) return;
     current = key;
+    completedFor = null;
 
     if (!d.chapter) {
       // no chapter in the URL or title: ask once instead of doing nothing
@@ -153,14 +203,39 @@
       manualMode(true);
       reveal(12000);
       dots.innerHTML = '';
+      paintProgress(0, false);
       return;
     }
     manualMode(false);
     label.innerHTML = `<b>${d.title}</b> · ch ${d.chapter}`;
+    paintProgress(readPercent(), false);
     reveal();
     const r = await send('reading', d);
     if (r?.ok) paintDots(r.trackers || {});
     else if (r?.reason) flash(String(r.reason).slice(0, 40));
+  }
+
+  /** scroll position inside the chapter, plus the "finished this chapter" signal */
+  let raf = 0;
+  function onScroll() {
+    if (raf) return;
+    raf = requestAnimationFrame(async () => {
+      raf = 0;
+      const d = detect();
+      if (!d.title || !d.chapter) return;
+      const pct = readPercent();
+      if (pct !== lastPct) {
+        lastPct = pct;
+        paintProgress(pct, completedFor === d.chapter);
+      }
+      if (pct >= 95 && completedFor !== d.chapter) {
+        completedFor = d.chapter;
+        paintProgress(100, true);
+        const r = await send('reading', { ...d, completed: true });
+        if (r?.ok) { paintDots(r.trackers || {}); reveal(4000); }
+        else flash(r?.reason ? String(r.reason).slice(0, 40) : 'not saved');
+      }
+    });
   }
 
   action.addEventListener('click', async () => {
@@ -168,12 +243,13 @@
     if (!d.title) return;
     const target = d.chapter ? d.chapter + 1 : Number(chInput.value);
     if (!Number.isFinite(target) || target <= 0) { chInput.focus(); return; }
-    const r = await send('reading', { ...d, chapter: target });
+    const r = await send('reading', { ...d, chapter: target, completed: true });
     if (r?.ok) {
       current = `${d.title}|${target}`;
       label.innerHTML = `<b>${d.title}</b> · ch ${target}`;
       manualMode(false);
       paintDots(r.trackers || {});
+      paintProgress(0, false);
       flash('saved');
       reveal();
     } else {
@@ -185,14 +261,15 @@
   function mount() {
     if (!document.body) return;
     document.body.append(host);
+    window.addEventListener('scroll', onScroll, { passive: true, capture: true });
+    document.addEventListener('scroll', onScroll, { passive: true, capture: true });
     report(true);
-    // first run: show itself, then get out of the way
     reveal();
   }
 
   let lastHref = location.href;
   new MutationObserver(() => {
-    if (location.href !== lastHref) { lastHref = location.href; current = null; report(true); }
+    if (location.href !== lastHref) { lastHref = location.href; current = null; lastPct = -1; report(true); }
     else if (current === null) report();
   }).observe(document.documentElement, { subtree: true, childList: true });
   window.addEventListener('popstate', () => { current = null; report(true); });

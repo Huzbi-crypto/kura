@@ -26,3 +26,9 @@ Thumbs.db
 
 # wrangler local state
 worker/.wrangler/
+
+# local commit message scratch
+.commitmsg
+
+# local debug artefacts
+debug-*.png

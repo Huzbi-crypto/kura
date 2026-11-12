@@ -5,6 +5,7 @@ import * as mangabaka from './trackers/mangabaka.js';
 import * as mal from './trackers/mal.js';
 import { series as S, state as ST, queue as Q, normTitle } from './db.js';
 import { resolveLinks, newSeries } from './mapping.js';
+import { normalizeTitle, similarity } from './match.js';
 
 export const trackers = [anilist, mangabaka, mal];
 export const trackerMeta = trackers.map((t) => t.meta);
@@ -41,6 +42,29 @@ export async function pullInto(s) {
   }
   await ST.put(st);
   return { st, moved };
+}
+
+/**
+ * Attach tracker ids to a series first seen on a reader page. Without this a page-detected series
+ * stays unlinked and silently never syncs — the failure mode that made MAL/AniList look broken
+ * while MangaBaka (updated by MAL-Sync) was the only one that moved.
+ */
+export async function linkByTitle(s, { force = false } = {}) {
+  s.links = s.links || {};
+  const log = [];
+  for (const t of trackers) {
+    const id = t.meta.id;
+    if (s.links[id]) { log.push(`${id}: already linked`); continue; }
+    if (!force && !(await t.meta.connected())) { log.push(`${id}: not connected`); continue; }
+    let hit = null;
+    try { hit = (await t.search(s.title))[0] || null; } catch (e) { log.push(`${id}: search failed (${e.message})`); continue; }
+    if (!hit?.id) { log.push(`${id}: no match`); continue; }
+    const score = similarity(normalizeTitle(hit.title || ''), normalizeTitle(s.title));
+    if (score >= 0.85) { s.links[id] = hit.id; log.push(`${id}: linked "${hit.title}" (${score.toFixed(2)})`); }
+    else log.push(`${id}: best hit "${hit.title}" too different (${score.toFixed(2)})`);
+  }
+  if (log.some((l) => l.includes('linked'))) { await resolveLinks(s); await S.put(s); }
+  return { links: s.links, log };
 }
 
 /** write local state to every linked tracker; failures queue with backoff */
