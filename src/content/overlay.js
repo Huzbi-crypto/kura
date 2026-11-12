@@ -7,8 +7,11 @@
   window.__kuraLoaded = true;
 
   const HOST_RULES = {
+    // weebcentral puts everything in the tab title: "Chapter 20 | World Wide Web MIKO! | Weeb Central"
+    // and its chapter URLs are opaque ids (/chapters/01M7...), so the number only exists there
     'weebcentral.com': {
-      chapter: () => (document.title.match(/(?:chapter|ch\.?)\s*([0-9]+(?:\.[0-9]+)?)/i) || [])[1],
+      title: () => (document.title.match(/^[^|]+\|\s*(.+?)\s*\|\s*Weeb Central/i) || [])[1],
+      chapter: () => (document.title.match(/^\s*(?:chapter|ch\.?)\s*([0-9]+(?:\.[0-9]+)?)/i) || [])[1],
     },
     'atsu.moe': {},
     'stonescape.xyz': {},
@@ -48,12 +51,23 @@
   }
 
   function detectTitle(host) {
+    const rule = HOST_RULES[host] || {};
     const og = (p) => document.querySelector(`meta[property="${p}"], meta[name="${p}"]`)?.content || '';
-    const headings = [...document.querySelectorAll('h1, [itemprop="name"], .title, .manga-title, .series-title')]
-      .map((el) => el.textContent.trim())
+    if (rule.title) {
+      const t = stripNoise(rule.title() || '');
+      if (t && !isSiteName(t, host)) return t;
+    }
+    const headings = [...document.querySelectorAll(
+      'h1, [itemprop="name"], .title, .manga-title, .series-title, .chapter-title, [data-title], [data-manga-title]',
+    )]
+      .map((el) => (el.getAttribute('data-title') || el.getAttribute('data-manga-title') || el.textContent || '').trim())
       .filter(Boolean);
+    // a link back to the series page is the most reliable name on single-chapter views
+    const seriesLink = [...document.querySelectorAll('a[href*="/manga/"], a[href*="/series/"], a[href*="/comic/"]')]
+      .map((a) => (a.textContent || '').trim())
+      .filter((t) => t.length > 1 && t.length < 120);
 
-    const candidates = [...headings, og('og:title'), document.title, titleFromUrl()];
+    const candidates = [...headings, ...seriesLink.slice(0, 3), og('og:title'), document.title, titleFromUrl()];
     for (const raw of candidates) {
       const t = stripNoise(raw);
       if (t && !isSiteName(t, host)) return t;
@@ -232,9 +246,14 @@
     const d = detect();
     if (!d.title) {
       // tell the worker anyway: "Kura ran here but could not read the page" is the log line
-      // that explains a silent no-op on a reader layout we do not parse yet
+      // that explains a no-op on a reader layout we do not parse yet
       send('reading', { ...d, title: '', chapter: null });
-      hide();
+      // and stay visible instead of vanishing: a missing pill looked like a missing extension
+      label.textContent = 'Kura · page not recognised';
+      readEl.textContent = '';
+      dots.innerHTML = '';
+      manualMode(false);
+      reveal(9000);
       return;
     }
     const key = d.title + '|' + (d.chapter ?? '?');

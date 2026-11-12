@@ -25,6 +25,13 @@ const pages = {
   '/manga/kyuu-ketsu-hirotte/chapter-65': `<!doctype html><html><head><meta charset="utf-8">
     <title>StoneScape</title><meta property="og:title" content="StoneScape"></head>
     <body style="margin:0;background:#111;color:#fff"><h1>Kyuuketsu Hirotte</h1>${imgs(1, 700)}</body></html>`,
+  // weebcentral: everything lives in the tab title, the chapter URL is an opaque id
+  '/chapters/01M788F45DCE48HXMXS4077467': `<!doctype html><html><head><meta charset="utf-8">
+    <title>Chapter 20 | World Wide Web MIKO! | Weeb Central</title></head>
+    <body style="margin:0;background:#111">${imgs(4, 800)}</body></html>`,
+  // an SPA reader Kura cannot parse: the pill must say so instead of disappearing
+  '/read/some-manga-hidden': `<!doctype html><html><head><meta charset="utf-8">
+    <title>Reader</title></head><body style="margin:0;background:#111"><div id="app"></div></body></html>`,
   // a reader with a "next chapter" footer below the pages: the end of the chapter is on screen at
   // ~60% of the page, so a 95%-scrolled rule would never fire and progress would never move
   '/manga/lazy-reader/chapter-7': `<!doctype html><html><head><meta charset="utf-8">
@@ -44,7 +51,10 @@ await new Promise((r) => server.listen(PORT, '127.0.0.1', r));
 
 const profile = mkdtempSync(join(tmpdir(), 'kura-ovl-'));
 const browser = spawn(EDGE, ['--headless=new', `--remote-debugging-port=${PORT + 1}`, `--user-data-dir=${profile}`,
-  '--no-first-run', '--window-size=900,800', 'about:blank'], { stdio: 'ignore' });
+  '--no-first-run', '--window-size=900,800',
+  // per-site rules are keyed by location.hostname, so serve the fake pages on the real host
+  '--host-resolver-rules=MAP weebcentral.com 127.0.0.1,MAP stonescape.xyz 127.0.0.1,MAP mangadot.com 127.0.0.1',
+  'about:blank'], { stdio: 'ignore' });
 const closeBrowser = guardBrowser(browser, { label: 'test-overlay' });
 let version;
 for (let i = 0; i < 60; i++) { try { version = await (await fetch(`http://127.0.0.1:${PORT + 1}/json/version`)).json(); break; } catch { await sleep(300); } }
@@ -66,8 +76,8 @@ const STATE = `(() => {
   });
 })()`;
 
-async function scenario(name, path, steps) {
-  const { targetId } = await send('Target.createTarget', { url: `http://127.0.0.1:${PORT}${path}` });
+async function scenario(name, path, steps, host = '127.0.0.1') {
+  const { targetId } = await send('Target.createTarget', { url: `http://${host}:${PORT}${path}` });
   const { sessionId } = await send('Target.attachToTarget', { targetId, flatten: true });
   await send('Runtime.enable', {}, sessionId);
   await sleep(1200);
@@ -125,6 +135,18 @@ fails += await scenario('end of chapter before 95% scroll', '/manga/lazy-reader/
 fails += await scenario('no heading at all', '/manga/hells-paradise/chapter-9', [
   ['falls back to the URL slug', STATE, (v) => v.includes('Hells Paradise')],
   ['still never claims completion', STATE, (v) => !v.includes('✓ read') && !v.includes('"100%"')],
+]);
+
+fails += await scenario('weebcentral title format', '/chapters/01M788F45DCE48HXMXS4077467', [
+  ['series from the tab title', STATE, (v) => v.includes('World Wide Web MIKO!')],
+  ['chapter from the tab title', STATE, (v) => v.includes('ch 20')],
+  ['no site name in the label', STATE, (v) => !/"label":"[^"]*Weeb Central/.test(v) && !v.includes('"label":"|')],
+], 'weebcentral.com');
+
+// an unrecognised layout must not look like a dead extension: a pill with the slug and a way in
+fails += await scenario('unknown layout', '/read/some-manga-hidden', [
+  ['pill is visible', STATE, (v) => v.includes('ch ?') || v.includes('page not recognised')],
+  ['offers manual chapter entry', STATE, (v) => v.includes('"inputVisible":true') || v.includes('page not recognised')],
 ]);
 
 console.log(fails ? `\n${fails} overlay check(s) failed` : '\nall overlay checks passed');

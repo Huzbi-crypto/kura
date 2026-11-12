@@ -3,6 +3,22 @@
 All notable changes to Kura. Format: [Keep a Changelog](https://keepachangelog.com/), versioning
 follows [SemVer](https://semver.org/).
 
+## [0.7.3] — unreleased
+
+Reader coverage, and a pill that admits when it cannot read a page.
+
+- **weebcentral.com**: chapter pages carry everything in the tab title
+  (`Chapter 20 | World Wide Web MIKO! | Weeb Central`) and their URLs are opaque ids
+  (`/chapters/01M7…`), so the number can only come from the title. Parsed properly now —
+  verified: `World Wide Web MIKO! · ch 20`, with no site name left in the label.
+- **Generic title sources**: single-chapter views often have no `og:title`; the reader now also
+  reads `h1`, a link back to the series page, `[data-title]` attributes, and finally the URL slug.
+- **The pill no longer disappears on unknown layouts.** It used to hide when it could not parse a
+  page, which is indistinguishable from a broken extension. It now stays visible with what it does
+  know and offers manual chapter entry.
+- The overlay test harness serves pages on the real hostnames (`--host-resolver-rules`), so per-site
+  rules are actually exercised instead of silently skipped.
+
 ## [0.7.2] — unreleased
 
 - **The activity log now stamps the build it came from** (header shows `v0.7.2`, and any event from a
