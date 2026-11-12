@@ -53,7 +53,7 @@ async function ensureSeries(title, host) {
 const handlers = {
   /** a reader page told us which chapter is open */
   async reading({ title, chapter, volume, url, host, completed }) {
-    if (!title || !chapter) {
+    if (!title || chapter == null) {
       await logEvent('reading', 'page seen but no series/chapter parsed', { host, url: String(url || '').slice(0, 120) });
       return { ok: false, reason: 'no series/chapter detected' };
     }

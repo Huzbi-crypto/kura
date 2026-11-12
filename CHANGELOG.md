@@ -3,6 +3,21 @@
 All notable changes to Kura. Format: [Keep a Changelog](https://keepachangelog.com/), versioning
 follows [SemVer](https://semver.org/).
 
+## [0.7.4] — unreleased
+
+- **mangadot is `mangadot.net`, not `.com`.** The manifest pointed at `mangadot.com`, which is a
+  parked domain ("may be for sale", article farm). The content script never injected on the site
+  being read. Verified in a real browser: `mangadot.net/manga/<id>` and `/chapter/<id>`.
+- **mangadot parsing**: series and chapter come from the tab title
+  (`The Glutton: Devourer of Kings — Ch. 0: 0 | MangaDot`); the chapter URL is an opaque id.
+- **Paged readers finish properly.** mangadot pages one image at a time (`Page 1 of 5, 1 / 5 · 20 %`),
+  so a scroll-percentage rule never completes. Completion now also fires on an explicit
+  "End of chapter" marker in view, or when the paged indicator says you are on the last page.
+- **DOM changes are observed, not just timers**, because timers are throttled in background tabs —
+  the previous poll missed the page change entirely.
+- **Chapter 0 works.** `!chapter` treated prologue chapter 0 as "no chapter", so it was never
+  recorded on any site.
+
 ## [0.7.3] — unreleased
 
 Reader coverage, and a pill that admits when it cannot read a page.

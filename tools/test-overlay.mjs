@@ -29,6 +29,15 @@ const pages = {
   '/chapters/01M788F45DCE48HXMXS4077467': `<!doctype html><html><head><meta charset="utf-8">
     <title>Chapter 20 | World Wide Web MIKO! | Weeb Central</title></head>
     <body style="margin:0;background:#111">${imgs(4, 800)}</body></html>`,
+  // mangadot.net: series + chapter live in the tab title, and the reader is PAGED
+  // ("Page 1 of 5, 1 / 5 · 20 %") with an explicit "End of chapter" marker after the last page
+  '/chapter/120889': `<!doctype html><html><head><meta charset="utf-8">
+    <title>The Glutton: Devourer of Kings — Ch. 0: 0 | MangaDot</title></head>
+    <body style="margin:0;background:#111;color:#fff">
+      <a href="/manga/20621">Ch. 0</a>
+      <main>${imgs(3, 900)}<p>End of chapter 0</p></main>
+      <button id="pp" aria-label="Page 1 of 3, open page selector">1 / 3 · 33 %</button>
+    </body></html>`,
   // an SPA reader Kura cannot parse: the pill must say so instead of disappearing
   '/read/some-manga-hidden': `<!doctype html><html><head><meta charset="utf-8">
     <title>Reader</title></head><body style="margin:0;background:#111"><div id="app"></div></body></html>`,
@@ -53,7 +62,7 @@ const profile = mkdtempSync(join(tmpdir(), 'kura-ovl-'));
 const browser = spawn(EDGE, ['--headless=new', `--remote-debugging-port=${PORT + 1}`, `--user-data-dir=${profile}`,
   '--no-first-run', '--window-size=900,800',
   // per-site rules are keyed by location.hostname, so serve the fake pages on the real host
-  '--host-resolver-rules=MAP weebcentral.com 127.0.0.1,MAP stonescape.xyz 127.0.0.1,MAP mangadot.com 127.0.0.1',
+  '--host-resolver-rules=MAP weebcentral.com 127.0.0.1,MAP stonescape.xyz 127.0.0.1,MAP mangadot.net 127.0.0.1',
   'about:blank'], { stdio: 'ignore' });
 const closeBrowser = guardBrowser(browser, { label: 'test-overlay' });
 let version;
@@ -142,6 +151,17 @@ fails += await scenario('weebcentral title format', '/chapters/01M788F45DCE48HXM
   ['chapter from the tab title', STATE, (v) => v.includes('ch 20')],
   ['no site name in the label', STATE, (v) => !/"label":"[^"]*Weeb Central/.test(v) && !v.includes('"label":"|')],
 ], 'weebcentral.com');
+
+// mangadot: paged reader, no scrolling at all
+fails += await scenario('mangadot paged reader', '/chapter/120889', [
+  ['series from the tab title', STATE, (v) => v.includes('The Glutton: Devourer of Kings')],
+  ['chapter from the tab title', STATE, (v) => v.includes('ch 0')],
+  ['opening is not a completion', `JSON.stringify(window.__sent.map(m => !!m.completed))`, (v) => v === '[false]'],
+  ['jump to the last page', `(() => { const b = document.getElementById('pp'); b.setAttribute('aria-label','Page 3 of 3, open page selector'); b.textContent = '3 / 3 · 100 %'; return 'paged'; })()`, (v) => v === 'paged'],
+  ['waited for the poll', `(async () => { await new Promise(r => setTimeout(r, 2200)); return 'waited'; })()`, (v) => v === 'waited'],
+  ['debug state', `JSON.stringify({ debug: !!window.__kuraDebug, paged: window.__kuraDebug?.pagedAtLastPage(), end: window.__kuraDebug?.endMarkerVisible(), bottom: window.__kuraDebug?.chapterEndVisible(), state: window.__kuraDebug?.state() })`, (v) => { console.log('     debug:', v); return true; }],
+  ['last page completes without scrolling', `JSON.stringify(window.__sent.map(m => !!m.completed))`, (v) => v === '[false,true]'],
+], 'mangadot.net');
 
 // an unrecognised layout must not look like a dead extension: a pill with the slug and a way in
 fails += await scenario('unknown layout', '/read/some-manga-hidden', [

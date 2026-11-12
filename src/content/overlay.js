@@ -15,6 +15,12 @@
     },
     'atsu.moe': {},
     'stonescape.xyz': {},
+    // mangadot.net: "The Glutton: Devourer of Kings — Ch. 0: 0 | MangaDot", chapter id in the URL.
+    // It is a *paged* reader, so scroll percentage never reaches the end.
+    'mangadot.net': {
+      title: () => (document.title.split(/\s+[—–-]\s+Ch\./i)[0] || '').trim(),
+      chapter: () => (document.title.match(/\bCh\.\s*([0-9]+(?:\.[0-9]+)?)/i) || [])[1],
+    },
     'mangadot.com': {},
   };
 
@@ -90,7 +96,9 @@
       const m = location.pathname.match(/(?:^|\/)(\d+(?:\.\d+)?)\/?$/);
       chapter = m?.[1] || null;
     }
-    return { title, chapter: chapter ? Number(chapter) : null, host, url: location.href };
+    // chapter 0 is a real chapter (mangadot and others use prologues numbered 0)
+    const num = chapter === null || chapter === undefined || chapter === '' ? null : Number(chapter);
+    return { title, chapter: Number.isFinite(num) ? num : null, host, url: location.href };
   }
 
   /** the element that actually scrolls: readers often put the pages in an inner container */
@@ -262,7 +270,7 @@
     completedFor = null;
     userScrolled = false;
 
-    if (!d.chapter) {
+    if (d.chapter == null) {
       // no chapter in the URL or title: ask once instead of doing nothing
       label.innerHTML = `<b>${d.title}</b> · ch ?`;
       manualMode(true);
@@ -288,7 +296,8 @@
 
   async function finishChapter() {
     const d = detect();
-    if (!d.title || !d.chapter || completedFor === d.chapter || completing) return;
+    // chapter 0 is a real chapter: compare against null, never falsiness
+    if (!d.title || d.chapter == null || completedFor === d.chapter || completing) return;
     completing = true;
     completedFor = d.chapter;
     paintProgress(100, true);
@@ -296,6 +305,30 @@
     completing = false;
     if (r?.ok) { paintDots(r.trackers || {}); reveal(4000); }
     else flash(r?.reason ? String(r.reason).slice(0, 40) : 'not saved');
+  }
+
+  /** an explicit "end of chapter" marker in view — mangadot prints one after the last page */
+  function endMarkerVisible() {
+    const re = /\b(end of (this )?chapter|you'?ve reached the end|chapter (is )?(complete|finished))\b/i;
+    const vh = window.innerHeight || document.documentElement.clientHeight;
+    for (const el of document.querySelectorAll('p, div, span, h2, h3, section')) {
+      if (el.children.length) continue; // leaf text only, so a whole page never matches
+      const text = el.textContent || '';
+      if (text.length > 120 || !re.test(text)) continue;
+      const r = el.getBoundingClientRect();
+      if (r.bottom > 0 && r.top < vh) return true;
+    }
+    return false;
+  }
+
+  /** paged readers announce position: "Page 3 of 3" / "3 / 3 · 100 %" */
+  function pagedAtLastPage() {
+    for (const el of document.querySelectorAll('[aria-label], [class*=page], [class*=progress]')) {
+      const label = `${el.getAttribute('aria-label') || ''} ${el.textContent || ''}`;
+      const m = label.match(/(\d+)\s*(?:of|\/)\s*(\d+)(?:\s*·|\s*%)?/i);
+      if (m && Number(m[1]) >= Number(m[2]) && Number(m[2]) > 0) return true;
+    }
+    return false;
   }
 
   /** is the end of the chapter actually on screen? (readers often put a footer below the pages) */
@@ -310,23 +343,37 @@
   }
 
   /** scroll position inside the chapter, plus the "finished this chapter" signal */
-  let raf = 0;
-  function onScroll() {
-    if (raf) return;
-    raf = requestAnimationFrame(async () => {
-      raf = 0;
+  // a time-throttled check rather than requestAnimationFrame: rAF is throttled or paused in
+  // background tabs, and paged readers never scroll at all, so this must run on a timer too
+  let lastRun = 0, runs = 0, lastError = null, lastSeen = null;
+  function onScroll(force = false) {
+    const now = Date.now();
+    // scroll events are throttled; a DOM change (new page, end marker) must not be dropped
+    if (!force && now - lastRun < 150) return;
+    lastRun = now;
+    runs++;
+    void (async () => {
+      try {
       const d = detect();
-      if (!d.title || !d.chapter) return;
+      if (!d.title || d.chapter == null) return;
       const pct = readPercent();
       if (pct != null && pct > 0) userScrolled = true; // real evidence of scrolling, not a guess
       if (pct !== lastPct) {
         lastPct = pct;
         paintProgress(pct, completedFor === d.chapter);
       }
-      // finished when you scrolled to the bottom, or when the last page's end is on screen
-      const atEnd = (pct != null && pct >= 95) || chapterEndVisible();
-      if (userScrolled && atEnd) await finishChapter();
-    });
+      // scrolled to the bottom, the last page's end on screen, an explicit end marker, or the
+      // paged reader telling us this is the final page — the last three need no scrolling at all,
+      // which is what makes paged readers work
+      const bottom = chapterEndVisible();
+      const marker = endMarkerVisible();
+      const paged = pagedAtLastPage();
+      lastSeen = { pct, bottom, marker, paged, chapter: d.chapter };
+      const explicitEnd = bottom || marker || paged;
+      const scrolledEnd = pct != null && pct >= 95;
+      if (explicitEnd || (userScrolled && scrolledEnd)) await finishChapter();
+      } catch (e) { lastError = String((e && e.message) || e); }
+    })();
   }
 
   action.addEventListener('click', async () => {
@@ -351,6 +398,12 @@
     }
   });
 
+  // exposed for the test harness and for debugging a reader layout in the field
+  window.__kuraDebug = {
+    detect, readPercent, chapterEndVisible, endMarkerVisible, pagedAtLastPage,
+    state: () => ({ current, completedFor, userScrolled, lastRun, runs, lastError, completing, lastSeen }),
+  };
+
   function mount() {
     if (!document.body) return;
     document.body.append(host);
@@ -358,6 +411,13 @@
     for (const el of [window, document, scrollerEl]) {
       if (el) el.addEventListener('scroll', onScroll, { passive: true, capture: true });
     }
+    // paged readers change pages without scrolling and timers are throttled in background tabs,
+    // so react to the DOM changing (page label, images, "end of chapter" marker) as well as to time
+    new MutationObserver(() => onScroll(true)).observe(document.body, {
+      subtree: true, childList: true, characterData: true,
+      attributes: true, attributeFilter: ['aria-label', 'class', 'src'],
+    });
+    setInterval(onScroll, 1500);
     // a reader that swaps images in later changes the height without scrolling
     window.addEventListener('resize', onScroll, { passive: true });
     report(true);
