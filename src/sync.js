@@ -98,11 +98,21 @@ export async function syncSeries(seriesId) {
   return pushOut(s, st);
 }
 
-/** the reading event: from a reader page or a manual +1 */
-export async function recordProgress(seriesId, chapter, { volume = 0 } = {}) {
+/**
+ * The reading event. `advance: false` only remembers that the chapter was opened — opening a
+ * chapter must never count as reading it, which is what pushed every tracker to 67 the moment
+ * the page loaded.
+ */
+export async function recordProgress(seriesId, chapter, { volume = 0, advance = true } = {}) {
   const s = await S.get(seriesId);
   if (!s) return null;
   const st = await ST.get(seriesId);
+  if (!advance) {
+    st.lastSeenChapter = Math.max(st.lastSeenChapter || 0, Number(chapter) || 0);
+    st.lastSeenAt = Date.now();
+    await ST.put(st);
+    return st;
+  }
   const next = Math.max(st.chapter || 0, Number(chapter) || 0);
   const total = s.total || 0;
   if (next > (st.chapter || 0)) {

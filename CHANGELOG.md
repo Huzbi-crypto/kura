@@ -3,6 +3,21 @@
 All notable changes to Kura. Format: [Keep a Changelog](https://keepachangelog.com/), versioning
 follows [SemVer](https://semver.org/).
 
+## [0.7.0] — unreleased
+
+**Opening a chapter no longer counts as reading it.**
+
+- Progress only advances when a chapter is *finished*: you reach the bottom, or the end of the last
+  page is on screen (which catches readers with a "next chapter" footer, and paged or lazy pages
+  where the scroll percentage never reaches 95). Opening chapter 67 and closing the tab now leaves
+  the trackers at 66.
+- The pill's button marks the chapter you are on, instead of silently jumping to chapter+1.
+- **Every tracker now appears in the activity log.** Linked ids are logged per chapter
+  (`linked: mal=…, anilist=…`), and a connected-but-unlinked tracker is named with the reason its
+  title search failed — that gap is why AniList and MangaBaka were absent from the log.
+- Opening a chapter records `lastSeenChapter` locally only, so the library can still show what you
+  are reading without claiming you finished it.
+
 ## [0.6.1] — unreleased
 
 - **The reader's brand name is no longer mistaken for the series.** stonescape.xyz puts "StoneScape"

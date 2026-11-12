@@ -93,9 +93,19 @@ console.log('setup probe:', setupProbe.result.value);
 // integration: a reader event must leave a trail in the activity log
 const trail = await send('Runtime.evaluate', {
   expression: `(async () => {
-    const r1 = await chrome.runtime.sendMessage({ type: 'reading', title: 'Verification Manga', chapter: 3, host: 'atsu.moe', url: 'https://atsu.moe/x' });
+    const opened = await chrome.runtime.sendMessage({ type: 'reading', title: 'Verification Manga', chapter: 3, host: 'atsu.moe', url: 'https://atsu.moe/x' });
+    const lib1 = await chrome.runtime.sendMessage({ type: 'library' });
+    const afterOpen = (lib1.items || []).find(i => i.title === 'Verification Manga');
+    const done = await chrome.runtime.sendMessage({ type: 'reading', title: 'Verification Manga', chapter: 3, host: 'atsu.moe', url: 'https://atsu.moe/x', completed: true });
+    const lib2 = await chrome.runtime.sendMessage({ type: 'library' });
+    const afterDone = (lib2.items || []).find(i => i.title === 'Verification Manga');
     const d = await chrome.runtime.sendMessage({ type: 'diag' });
-    return JSON.stringify({ reading: { ok: r1.ok, chapter: r1.chapter }, events: (d.events || []).slice(0, 4).map(e => e.msg) });
+    return JSON.stringify({
+      openedOnly: opened.openedOnly,
+      chapterAfterOpen: afterOpen?.state?.chapter,
+      chapterAfterDone: afterDone?.state?.chapter,
+      events: (d.events || []).slice(0, 6).map(e => e.msg),
+    });
   })()`, awaitPromise: true, returnByValue: true,
 }, pageSession);
 console.log('activity trail:', trail.result.value);

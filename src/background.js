@@ -1,6 +1,6 @@
 // background.js — service worker: routes reader events, keeps the retry queue warm.
 import { series as S, state as ST, normTitle } from './db.js';
-import { recordProgress, drainQueue, syncSeries, pullInto, pushOut, connected, importTracker, backfillCovers, library as libAll, linkByTitle } from './sync.js';
+import { recordProgress, drainQueue, syncSeries, pullInto, pushOut, connected, importTracker, backfillCovers, library as libAll, linkByTitle, trackers } from './sync.js';
 import { newSeries, resolveLinks } from './mapping.js';
 import { bestMatch, normalizeTitle } from './match.js';
 import * as mangabaka from './trackers/mangabaka.js';
@@ -53,19 +53,26 @@ const handlers = {
       return { ok: false, reason: 'no series/chapter detected' };
     }
     const { series: s, created } = await ensureSeries(title, host);
-    // nothing to push to yet? attach tracker ids by title before reporting progress
-    if (!Object.keys(s.links || {}).length) {
-      const { log: line } = await linkByTitle(s, { force: true });
-      await logEvent('match', `series had no tracker links — tried title matching`, { title: s.title, detail: line.join('; ') });
-    }
     await logEvent('reading', created ? 'new series added' : 'matched local series', { host, title, chapter, completed: Boolean(completed) });
-    const st = await recordProgress(s.id, chapter, { volume });
 
-    // log what each tracker actually answered — a silent 401 here was invisible before
+    // every connected tracker needs a link, not just "the series has none at all" — that gap is
+    // why AniList and MangaBaka never appeared in the activity log: they were simply unlinked
+    const missing = [];
+    for (const t of trackers) if (!s.links?.[t.meta.id] && (await t.meta.connected())) missing.push(t.meta.id);
+    if (missing.length) {
+      const { log: line } = await linkByTitle(s, { force: true });
+      await logEvent('match', `unlinked: ${missing.join(', ')} — ${line.join('; ') || 'nothing tried'}`, { title: s.title });
+    }
+    await logEvent('links', `linked: ${Object.entries(s.links || {}).map(([k, v]) => `${k}=${v}`).join(', ') || 'none'}`, { title: s.title });
+
+    // opening a chapter records nothing on the trackers; only reaching the end does
+    const st = await recordProgress(s.id, chapter, { volume, advance: Boolean(completed) });
     const marks = st?.trackers || {};
-    const linked = Object.keys(s.links || {});
-    if (!linked.length) await logEvent('sync', 'series has no tracker links', { title: s.title });
-    for (const id of linked) {
+    if (!completed) {
+      await logEvent('reading', `opened ch ${chapter} — not counted until you finish it`, { title: s.title, chapter });
+      return { ok: true, created, seriesId: s.id, title: s.title, chapter: st?.chapter ?? 0, trackers: marks, openedOnly: true };
+    }
+    for (const id of Object.keys(s.links || {})) {
       const m = marks[id] || {};
       await logEvent('sync', `${id}: ${m.state || 'not attempted'}${m.error ? ' — ' + m.error : ''}`, { title: s.title, chapter });
     }

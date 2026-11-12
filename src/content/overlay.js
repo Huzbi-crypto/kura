@@ -167,7 +167,7 @@
       <div class="track"><i></i></div>
       <div class="dots"></div>
       <input class="ch" type="number" min="0" step="0.1" placeholder="ch" hidden />
-      <button title="Mark chapter read">+1</button>
+      <button title="Mark this chapter read">✓</button>
       <span class="toast"></span>
     </div>
     <div class="handle" title="Kura — click to show">K</div>`;
@@ -204,7 +204,8 @@
 
   function manualMode(on) {
     chInput.hidden = !on;
-    action.textContent = on ? 'Set' : '+1';
+    action.textContent = on ? 'Set' : '✓';
+    action.title = on ? 'Save this chapter number' : 'Mark this chapter read';
   }
 
   function paintDots(trackers = {}) {
@@ -260,6 +261,35 @@
     else if (r?.reason) flash(String(r.reason).slice(0, 40));
   }
 
+  /**
+   * The chapter is finished when the last page of it has been on screen. Scroll percentage alone
+   * misses paged, lazy-loading and infinite readers, where the height keeps changing under you.
+   */
+  let completing = false;
+
+  async function finishChapter() {
+    const d = detect();
+    if (!d.title || !d.chapter || completedFor === d.chapter || completing) return;
+    completing = true;
+    completedFor = d.chapter;
+    paintProgress(100, true);
+    const r = await send('reading', { ...d, completed: true });
+    completing = false;
+    if (r?.ok) { paintDots(r.trackers || {}); reveal(4000); }
+    else flash(r?.reason ? String(r.reason).slice(0, 40) : 'not saved');
+  }
+
+  /** is the end of the chapter actually on screen? (readers often put a footer below the pages) */
+  function chapterEndVisible() {
+    const el = scroller();
+    if (!el || el.scrollHeight - el.clientHeight <= 200) return false;
+    const pics = [...document.querySelectorAll('img')].filter((i) => i.getBoundingClientRect().width > 180);
+    if (!pics.length) return false;
+    const last = pics[pics.length - 1].getBoundingClientRect();
+    const vh = window.innerHeight || document.documentElement.clientHeight;
+    return last.bottom > 0 && last.bottom <= vh + 60;
+  }
+
   /** scroll position inside the chapter, plus the "finished this chapter" signal */
   let raf = 0;
   function onScroll() {
@@ -274,21 +304,18 @@
         lastPct = pct;
         paintProgress(pct, completedFor === d.chapter);
       }
-      // only claim the chapter is finished after the reader actually scrolled to the end
-      if (userScrolled && pct != null && pct >= 95 && completedFor !== d.chapter) {
-        completedFor = d.chapter;
-        paintProgress(100, true);
-        const r = await send('reading', { ...d, completed: true });
-        if (r?.ok) { paintDots(r.trackers || {}); reveal(4000); }
-        else flash(r?.reason ? String(r.reason).slice(0, 40) : 'not saved');
-      }
+      // finished when you scrolled to the bottom, or when the last page's end is on screen
+      const atEnd = (pct != null && pct >= 95) || chapterEndVisible();
+      if (userScrolled && atEnd) await finishChapter();
     });
   }
 
   action.addEventListener('click', async () => {
     const d = detect();
     if (!d.title) return;
-    const target = d.chapter ? d.chapter + 1 : Number(chInput.value);
+    // completion means "I read chapter N", so the button marks the chapter on screen — opening it
+    // no longer counts, which is why this must not jump to chapter+1
+    const target = d.chapter ?? Number(chInput.value);
     if (!Number.isFinite(target) || target <= 0) { chInput.focus(); return; }
     const r = await send('reading', { ...d, chapter: target, completed: true });
     if (r?.ok) {
@@ -297,7 +324,7 @@
       manualMode(false);
       paintDots(r.trackers || {});
       paintProgress(100, true);
-      flash('saved');
+      flash(`ch ${target} read`);
       reveal();
     } else {
       flash(r?.reason ? String(r.reason).slice(0, 40) : 'not saved');

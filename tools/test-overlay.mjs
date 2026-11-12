@@ -24,6 +24,11 @@ const pages = {
   '/manga/kyuu-ketsu-hirotte/chapter-65': `<!doctype html><html><head><meta charset="utf-8">
     <title>StoneScape</title><meta property="og:title" content="StoneScape"></head>
     <body style="margin:0;background:#111;color:#fff"><h1>Kyuuketsu Hirotte</h1>${imgs(1, 700)}</body></html>`,
+  // a reader with a "next chapter" footer below the pages: the end of the chapter is on screen at
+  // ~60% of the page, so a 95%-scrolled rule would never fire and progress would never move
+  '/manga/lazy-reader/chapter-7': `<!doctype html><html><head><meta charset="utf-8">
+    <title>Lazy Reader Ch. 7</title><meta property="og:title" content="Lazy Reader Ch. 7"></head>
+    <body style="margin:0;background:#111">${imgs(3, 700)}<footer style="height:900px;background:#181818"></footer></body></html>`,
   // same, but with no heading at all: only the URL slug knows the series
   '/manga/hells-paradise/chapter-9': `<!doctype html><html><head><meta charset="utf-8">
     <title>StoneScape</title><meta property="og:title" content="StoneScape"></head>
@@ -104,6 +109,15 @@ fails += await scenario('site name in og:title', '/manga/kyuu-ketsu-hirotte/chap
   ['short page never claims completion', STATE, (v) => !v.includes('✓ read') && !v.includes('"100%"')],
   ['no completion claim', `JSON.stringify(window.__sent.map(m => !!m.completed))`, (v) => v === '[false]'],
   ['sent the real title', `JSON.stringify(window.__sent[0]?.title)`, (v) => v.includes('Kyuuketsu Hirotte')],
+]);
+
+fails += await scenario('end of chapter before 95% scroll', '/manga/lazy-reader/chapter-7', [
+  ['scrolled 30%', scrollTo(0.3), (v) => v === 'scrolled'],
+  ['settled', settle, (v) => v === 'settled'],
+  ['not finished yet', `JSON.stringify(window.__sent.map(m => !!m.completed))`, (v) => v === '[false]'],
+  ['scrolled 60% (end of chapter on screen)', scrollTo(0.6), (v) => v === 'scrolled'],
+  ['settled', settle, (v) => v === 'settled'],
+  ['finished without reaching 95%', `JSON.stringify(window.__sent.map(m => !!m.completed))`, (v) => v === '[false,true]'],
 ]);
 
 fails += await scenario('no heading at all', '/manga/hells-paradise/chapter-9', [
