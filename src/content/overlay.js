@@ -15,18 +15,56 @@
     'mangadot.com': {},
   };
 
-  const cleanTitle = (t) =>
+  const stripNoise = (t) =>
     String(t || '')
-      .replace(/\s*[|·—-]\s*(read|chapter|ch\.?|vol\.?|manga|online|free).*$/i, '')
+      .replace(/\s*[|·—-]\s*(read|chapter|ch\.?|vol\.?|manga|online|free|raw|english).*$/i, '')
       .replace(/\s*(chapter|ch\.?)\s*[0-9]+(\.[0-9]+)?/gi, '')
       .replace(/\s*[-–—:|]\s*$/g, '')
       .trim();
 
+  const squash = (t) => String(t || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+  // reader brands that show up in <title>/og:title instead of the series name
+  const READER_BRANDS = ['stonescape', 'atsu', 'atsuмoe', 'weebcentral', 'mangadot', 'mangadex',
+    'mangahere', 'mangakakalot', 'batoto', 'bato', 'reader', 'home', 'manga', 'read manga online'];
+
+  /** the site's own name must never stand in for the series name (stonescape.xyz does this) */
+  function isSiteName(text, host) {
+    const a = squash(text);
+    const h = squash(host).replace(/^(www|m|read)$/, '');
+    if (!a || a.length < 3) return true;
+    if (a === h || (h && (h.includes(a) || a.includes(h)))) return true;
+    return READER_BRANDS.some((b) => squash(b) === a);
+  }
+
+  /** last resort: the series slug in the URL, e.g. /manga/kyuu-ketsu-hirotte/chapter-65 */
+  function titleFromUrl() {
+    const m = location.pathname.match(/\/(?:manga|series|comic|comics|title|read)\/([^/]+)/i);
+    if (!m) return '';
+    let slug = decodeURIComponent(m[1]).replace(/[-_+]+/g, ' ').trim();
+    slug = slug.replace(/\b(chapter|chap|ch|vol|volume|read|raw|en)\b.*$/i, '').trim();
+    if (!slug || /^\d+$/.test(slug.replace(/\s/g, ''))) return '';
+    return slug.replace(/\b[a-z]/g, (c) => c.toUpperCase());
+  }
+
+  function detectTitle(host) {
+    const og = (p) => document.querySelector(`meta[property="${p}"], meta[name="${p}"]`)?.content || '';
+    const headings = [...document.querySelectorAll('h1, [itemprop="name"], .title, .manga-title, .series-title')]
+      .map((el) => el.textContent.trim())
+      .filter(Boolean);
+
+    const candidates = [...headings, og('og:title'), document.title, titleFromUrl()];
+    for (const raw of candidates) {
+      const t = stripNoise(raw);
+      if (t && !isSiteName(t, host)) return t;
+    }
+    return '';
+  }
+
   function detect() {
     const host = location.hostname.replace(/^www\./, '');
     const rule = HOST_RULES[host] || {};
-    const og = (p) => document.querySelector(`meta[property="${p}"], meta[name="${p}"]`)?.content || '';
-    const title = cleanTitle(og('og:title') || document.title || '');
+    const title = detectTitle(host);
     let chapter = rule.chapter ? rule.chapter() : null;
     if (!chapter) {
       const m = (document.title + ' ' + location.pathname + ' ' + location.href).match(
@@ -55,11 +93,15 @@
     return best || de;
   }
 
+  /**
+   * How far through the chapter, or null when it cannot be known yet. A page that has not laid
+   * out its images is not "100% read" — reporting that was a lie the pill used to tell.
+   */
   function readPercent() {
     const el = scroller();
-    if (!el) return 0;
+    if (!el) return null;
     const max = el.scrollHeight - el.clientHeight;
-    if (max <= 8) return 100; // a one-screen chapter is read as soon as you see it
+    if (max <= 8) return null; // one screen so far: unknown, not finished
     return Math.min(100, Math.max(0, Math.round((el.scrollTop / max) * 100)));
   }
 
@@ -74,14 +116,15 @@
       font: 500 13px/1.2 system-ui, -apple-system, "Segoe UI", sans-serif;
       color: #f4f4f5; background: #15151a; border: 1px solid #2a2a33;
       border-radius: 999px; box-shadow: 0 10px 34px rgba(0,0,0,.45);
-      pointer-events: auto; opacity: 1; transform: none;
+      pointer-events: auto; opacity: 1; transform: none; max-width: min(78vw, 460px);
       transition: opacity .22s ease, transform .22s ease;
     }
     .wrap.idle .pill { opacity: 0; transform: translateY(6px); pointer-events: none; }
-    .pill b { font-weight: 650; color: #fff; }
+    .label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .label b { font-weight: 650; color: #fff; }
     .read { color: #a9a9b6; font-variant-numeric: tabular-nums; }
     .read.done { color: #46d39a; }
-    .track { position: relative; width: 44px; height: 3px; border-radius: 2px; background: #2c2c36; overflow: hidden; }
+    .track { position: relative; width: 44px; height: 3px; border-radius: 2px; background: #2c2c36; overflow: hidden; flex: 0 0 auto; }
     .track i { position: absolute; inset: 0 auto 0 0; width: 0; background: #f0526b; transition: width .18s ease; }
     .track.done i { background: #46d39a; }
     .dots { display: flex; gap: 4px; }
@@ -120,7 +163,7 @@
   wrap.innerHTML = `
     <div class="pill">
       <span class="label">…</span>
-      <span class="read">0%</span>
+      <span class="read">—</span>
       <div class="track"><i></i></div>
       <div class="dots"></div>
       <input class="ch" type="number" min="0" step="0.1" placeholder="ch" hidden />
@@ -143,7 +186,8 @@
   let current = null;
   let hideTimer = null;
   let completedFor = null;
-  let lastPct = -1;
+  let userScrolled = false;
+  let lastPct = 'init';
   const IDLE_AFTER = 6000;
 
   function reveal(ms = IDLE_AFTER) {
@@ -174,9 +218,9 @@
   }
 
   function paintProgress(pct, done) {
-    readEl.textContent = done ? '✓ read' : `${pct}%`;
+    readEl.textContent = done ? '✓ read' : pct == null ? '—' : `${pct}%`;
     readEl.className = 'read' + (done ? ' done' : '');
-    bar.style.width = `${done ? 100 : pct}%`;
+    bar.style.width = `${done ? 100 : pct == null ? 0 : pct}%`;
     track.className = 'track' + (done ? ' done' : '');
   }
 
@@ -196,6 +240,7 @@
     if (!force && current === key) return;
     current = key;
     completedFor = null;
+    userScrolled = false;
 
     if (!d.chapter) {
       // no chapter in the URL or title: ask once instead of doing nothing
@@ -203,7 +248,7 @@
       manualMode(true);
       reveal(12000);
       dots.innerHTML = '';
-      paintProgress(0, false);
+      paintProgress(null, false);
       return;
     }
     manualMode(false);
@@ -224,11 +269,13 @@
       const d = detect();
       if (!d.title || !d.chapter) return;
       const pct = readPercent();
+      if (pct != null && pct > 0) userScrolled = true; // real evidence of scrolling, not a guess
       if (pct !== lastPct) {
         lastPct = pct;
         paintProgress(pct, completedFor === d.chapter);
       }
-      if (pct >= 95 && completedFor !== d.chapter) {
+      // only claim the chapter is finished after the reader actually scrolled to the end
+      if (userScrolled && pct != null && pct >= 95 && completedFor !== d.chapter) {
         completedFor = d.chapter;
         paintProgress(100, true);
         const r = await send('reading', { ...d, completed: true });
@@ -249,7 +296,7 @@
       label.innerHTML = `<b>${d.title}</b> · ch ${target}`;
       manualMode(false);
       paintDots(r.trackers || {});
-      paintProgress(0, false);
+      paintProgress(100, true);
       flash('saved');
       reveal();
     } else {
@@ -261,15 +308,19 @@
   function mount() {
     if (!document.body) return;
     document.body.append(host);
-    window.addEventListener('scroll', onScroll, { passive: true, capture: true });
-    document.addEventListener('scroll', onScroll, { passive: true, capture: true });
+    const scrollerEl = scroller();
+    for (const el of [window, document, scrollerEl]) {
+      if (el) el.addEventListener('scroll', onScroll, { passive: true, capture: true });
+    }
+    // a reader that swaps images in later changes the height without scrolling
+    window.addEventListener('resize', onScroll, { passive: true });
     report(true);
     reveal();
   }
 
   let lastHref = location.href;
   new MutationObserver(() => {
-    if (location.href !== lastHref) { lastHref = location.href; current = null; lastPct = -1; report(true); }
+    if (location.href !== lastHref) { lastHref = location.href; current = null; lastPct = 'init'; report(true); }
     else if (current === null) report();
   }).observe(document.documentElement, { subtree: true, childList: true });
   window.addEventListener('popstate', () => { current = null; report(true); });

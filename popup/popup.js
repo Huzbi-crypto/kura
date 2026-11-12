@@ -61,7 +61,15 @@ function card(item) {
   plus.onclick = async (e) => { e.stopPropagation(); await send({ type: 'bump', seriesId: item.id, by: 1 }); refresh(); };
   const sync = el('button', null, 'Sync');
   sync.onclick = async (e) => { e.stopPropagation(); sync.textContent = '…'; await send({ type: 'syncOne', seriesId: item.id }); refresh(); };
-  actions.append(plus, sync);
+  const drop = el('button', 'drop', '×');
+  drop.title = 'Remove from Kura (does not touch your trackers)';
+  drop.onclick = async (e) => {
+    e.stopPropagation();
+    if (!confirm(`Remove "${item.title}" from Kura? Your trackers are not changed.`)) return;
+    await send({ type: 'forget', seriesId: item.id });
+    refresh();
+  };
+  actions.append(plus, sync, drop);
   body.append(actions);
 
   root.append(cover, body);
@@ -197,21 +205,26 @@ async function hydrateSettings() {
 async function loadDiag() {
   const box = $('#diag-log');
   if (!box) return;
+  box.replaceChildren();
   try {
     const r = await send({ type: 'diag' });
     const events = r?.events || [];
     $('#diag-count').textContent = events.length ? `${events.length} recent` : '';
-    box.textContent = events.length
-      ? events.map((e) => {
-        const t = new Date(e.t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        const extra = e.data && (e.data.host || e.data.title)
-          ? ' · ' + [e.data.host, e.data.title, e.data.chapter != null ? 'ch ' + e.data.chapter : ''].filter(Boolean).join(' / ')
-          : '';
-        return `${t}  ${e.msg}${extra}`;
-      }).join('\n')
-      : 'no events yet — open a chapter on a reader site';
+    if (!events.length) {
+      box.append(el('div', 'empty', 'no events yet — open a chapter on a reader site'));
+    }
+    for (const e of events) {
+      const row = el('div', 'row');
+      const when = el('span', 'when', new Date(e.t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+      const what = el('span', 'what', e.msg);
+      const where = el('span', 'where', [e.data?.host, e.data?.title, e.data?.chapter != null ? 'ch ' + e.data.chapter : '']
+        .filter(Boolean).join(' · '));
+      if (e.data?.detail) what.title = e.data.detail;
+      row.append(when, what, where);
+      box.append(row);
+    }
   } catch (e) {
-    box.textContent = 'could not read activity: ' + e.message;
+    box.append(el('div', 'empty', 'could not read activity: ' + e.message));
   }
   const sites = (chrome.runtime.getManifest().content_scripts || [])
     .flatMap((c) => c.matches.map((m) => m.replace(/^https:\/\//, '').replace(/\/\*$/, '')))

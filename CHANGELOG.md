@@ -3,6 +3,22 @@
 All notable changes to Kura. Format: [Keep a Changelog](https://keepachangelog.com/), versioning
 follows [SemVer](https://semver.org/).
 
+## [0.6.1] — unreleased
+
+- **The reader's brand name is no longer mistaken for the series.** stonescape.xyz puts "StoneScape"
+  in `<title>` and `og:title`, so pages became a series called "StoneScape". The title now comes from
+  the page heading first, then og:title, then the title tag, then the URL slug — and known reader
+  brands are rejected outright. Verified: h1 beats the site name, and with no heading the slug
+  (`/manga/hells-paradise/...`) is used.
+- **No more 100% on open.** A page whose images have not laid out is not a finished chapter. The
+  percentage reads "—" until the page is actually scrollable, and a chapter is only marked finished
+  after real scroll evidence, so opening a chapter no longer claims you read it.
+- **Activity rows stop overlapping**: the log was a `<pre>` with an unstyled header; it is now real
+  rows (time / message / place) with the card header laid out as flex. Verified by geometry, not by
+  eye: four rows, zero overlapping pairs.
+- **Remove entries from the library**: an × on each card drops a series from Kura only — useful for
+  the duplicates created by the old title matching. Trackers are untouched.
+
 ## [0.6.0] — unreleased
 
 The reading loop, made observable and made to actually reach the trackers.

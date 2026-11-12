@@ -100,6 +100,26 @@ const trail = await send('Runtime.evaluate', {
 }, pageSession);
 console.log('activity trail:', trail.result.value);
 
+// the activity rows must stack, not overlap: assert geometry, do not just look at it
+await send('Runtime.evaluate', { expression: `document.getElementById('diag-refresh').click()` }, pageSession);
+await sleep(900);
+await send('Runtime.evaluate', { expression: `document.getElementById('diag-log').scrollIntoView({ block: 'center' })` }, pageSession);
+await sleep(500);
+const geometry = await send('Runtime.evaluate', {
+  expression: `(() => {
+    const rows = [...document.querySelectorAll('#diag-log .row')];
+    const rects = rows.map(r => r.getBoundingClientRect()).map(r => ({ top: Math.round(r.top), bottom: Math.round(r.bottom), h: Math.round(r.height) }));
+    let overlap = 0;
+    for (let i = 1; i < rects.length; i++) if (rects[i].top < rects[i - 1].bottom) overlap++;
+    const head = document.querySelector('#view-settings .card .who');
+    return JSON.stringify({ rows: rects.length, overlap, rects: rects.slice(0, 3), whoFlex: head ? getComputedStyle(head).display : null });
+  })()`, returnByValue: true,
+}, pageSession);
+console.log('activity geometry:', geometry.result.value);
+const shot2 = await send('Page.captureScreenshot', { format: 'png' }, pageSession);
+const { writeFileSync: wfs } = await import('node:fs');
+wfs('C:/Users/huzbi/Projects/kura/debug-activity.png', Buffer.from(shot2.data, 'base64'));
+
 const shot = await send('Page.captureScreenshot', { format: 'png' }, pageSession);
 const { writeFileSync } = await import('node:fs');
 writeFileSync('C:/Users/huzbi/Projects/kura/debug-setup.png', Buffer.from(shot.data, 'base64'));
