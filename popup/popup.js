@@ -209,14 +209,15 @@ async function loadDiag() {
   try {
     const r = await send({ type: 'diag' });
     const events = r?.events || [];
-    $('#diag-count').textContent = events.length ? `${events.length} recent` : '';
+    const version = chrome.runtime.getManifest().version;
+    $('#diag-count').textContent = events.length ? `v${version} · ${events.length} recent` : `v${version}`;
     if (!events.length) {
       box.append(el('div', 'empty', 'no events yet — open a chapter on a reader site'));
     }
     for (const e of events) {
       const row = el('div', 'row');
       const when = el('span', 'when', new Date(e.t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
-      const what = el('span', 'what', e.msg);
+      const what = el('span', 'what', e.v && e.v !== version ? `${e.msg}  (v${e.v})` : e.msg);
       const where = el('span', 'where', [e.data?.host, e.data?.title, e.data?.chapter != null ? 'ch ' + e.data.chapter : '']
         .filter(Boolean).join(' · '));
       if (e.data?.detail) what.title = e.data.detail;

@@ -3,6 +3,15 @@
 All notable changes to Kura. Format: [Keep a Changelog](https://keepachangelog.com/), versioning
 follows [SemVer](https://semver.org/).
 
+## [0.7.2] — unreleased
+
+- **The activity log now stamps the build it came from** (header shows `v0.7.2`, and any event from a
+  different version is marked inline). Two rounds of debugging went into working out which build was
+  actually running from the shape of the log.
+- **The id bridge always runs when linking.** It only ran when *title* matching had added something,
+  so a series with AniList already linked but MangaBaka missing never got the MAL → MangaBaka lookup —
+  and MangaBaka's title search cannot find alternate titles like "I Only Want to Beat You".
+
 ## [0.7.1] — unreleased
 
 Two bugs that between them meant MangaBaka and AniList could never be linked.

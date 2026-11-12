@@ -8,10 +8,15 @@ import { logEvent, readEvents, clearEvents } from './diag.js';
 
 const log = (...a) => console.log('[kura]', ...a);
 
+const VERSION = chrome.runtime.getManifest().version;
+
 chrome.runtime.onInstalled.addListener(() => {
   chrome.alarms.create('drain', { periodInMinutes: 1 });
   log('installed');
+  logEvent('start', `Kura ${VERSION} installed`);
 });
+
+chrome.runtime.onStartup.addListener(() => logEvent('start', `Kura ${VERSION} started`));
 
 chrome.alarms.onAlarm.addListener(async (a) => {
   if (a.name !== 'drain') return;

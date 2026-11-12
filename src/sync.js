@@ -65,7 +65,15 @@ export async function linkByTitle(s, { force = false } = {}) {
     if (best.score >= 0.85) { s.links[id] = hit.id; log.push(`${id}: linked "${best.title}" (${best.score.toFixed(2)})`); }
     else log.push(`${id}: best hit "${best.title}" too different (${best.score.toFixed(2)})`);
   }
-  if (log.some((l) => l.includes('linked'))) { await resolveLinks(s); await S.put(s); }
+  // always run the id bridge: a series can already have AniList linked and still be missing
+  // MangaBaka, and MangaBaka's own title search cannot find most alternate titles
+  const before = JSON.stringify(s.links);
+  await resolveLinks(s);
+  if (JSON.stringify(s.links) !== before) {
+    await S.put(s);
+    const added = Object.keys(s.links).filter((k) => !before.includes(`"${k}"`));
+    log.push(`bridge: ${added.join(', ') || 'updated'}`);
+  }
   return { links: s.links, log };
 }
 
