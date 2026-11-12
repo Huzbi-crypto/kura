@@ -2,6 +2,7 @@
 // actually renders (rects + computed styles), so layout bugs are diagnosed, not guessed.
 // usage: node tools/debug-library.mjs [count]
 import { spawn } from 'node:child_process';
+import { guardBrowser } from './_browser.mjs';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -15,6 +16,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const browser = spawn(EDGE, ['--headless=new', `--remote-debugging-port=${PORT}`, `--user-data-dir=${profile}`,
   `--disable-extensions-except=${dir}`, `--load-extension=${dir}`, '--no-first-run', '--window-size=430,600', 'about:blank'], { stdio: 'ignore' });
+const closeBrowser = guardBrowser(browser, { label: 'debug-library' });
 
 let version;
 for (let i = 0; i < 60; i++) { try { version = await (await fetch(`http://127.0.0.1:${PORT}/json/version`)).json(); break; } catch { await sleep(300); } }
@@ -36,7 +38,7 @@ for (let i = 0; i < 40 && !sw; i++) {
   }
   if (!sw) await sleep(400);
 }
-if (!sw) { console.error('no service worker'); browser.kill(); process.exit(1); }
+if (!sw) { console.error('no service worker'); closeBrowser(); process.exit(1); }
 
 const page = await send('Target.createTarget', { url: 'about:blank' });
 const { sessionId } = await send('Target.attachToTarget', { targetId: page.targetId, flatten: true });
@@ -128,5 +130,5 @@ const out = join(dir, 'debug-library.png');
 writeFileSync(out, Buffer.from(shot.data, 'base64'));
 console.log('screenshot ->', out);
 
-ws.close(); browser.kill();
+ws.close(); closeBrowser();
 await sleep(300); try { rmSync(profile, { recursive: true, force: true }); } catch {}

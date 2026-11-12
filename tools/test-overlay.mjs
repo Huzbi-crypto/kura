@@ -2,6 +2,7 @@
 // in-chapter percentage, the completion signal, and (critically) that a site's own name in
 // og:title is never mistaken for the series title.
 import { spawn } from 'node:child_process';
+import { guardBrowser } from './_browser.mjs';
 import { mkdtempSync, rmSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -44,6 +45,7 @@ await new Promise((r) => server.listen(PORT, '127.0.0.1', r));
 const profile = mkdtempSync(join(tmpdir(), 'kura-ovl-'));
 const browser = spawn(EDGE, ['--headless=new', `--remote-debugging-port=${PORT + 1}`, `--user-data-dir=${profile}`,
   '--no-first-run', '--window-size=900,800', 'about:blank'], { stdio: 'ignore' });
+const closeBrowser = guardBrowser(browser, { label: 'test-overlay' });
 let version;
 for (let i = 0; i < 60; i++) { try { version = await (await fetch(`http://127.0.0.1:${PORT + 1}/json/version`)).json(); break; } catch { await sleep(300); } }
 const ws = new WebSocket(version.webSocketDebuggerUrl);
@@ -126,6 +128,6 @@ fails += await scenario('no heading at all', '/manga/hells-paradise/chapter-9', 
 ]);
 
 console.log(fails ? `\n${fails} overlay check(s) failed` : '\nall overlay checks passed');
-ws.close(); browser.kill(); server.close();
+ws.close(); server.close(); closeBrowser();
 await sleep(200); try { rmSync(profile, { recursive: true, force: true }); } catch {}
 process.exit(fails ? 1 : 0);

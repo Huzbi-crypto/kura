@@ -1,6 +1,7 @@
 // sw-errors.mjs — inspect the extension's service worker: are the message listeners registered?
 // usage: node tools/sw-errors.mjs [extensionDir]
 import { spawn } from 'node:child_process';
+import { guardBrowser } from './_browser.mjs';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -12,6 +13,7 @@ const profile = mkdtempSync(join(tmpdir(), 'kura-sw-'));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const browser = spawn(EDGE, ['--headless=new', `--remote-debugging-port=${PORT}`, `--user-data-dir=${profile}`,
   `--disable-extensions-except=${dir}`, `--load-extension=${dir}`, '--no-first-run', 'about:blank'], { stdio: 'ignore' });
+const closeBrowser = guardBrowser(browser, { label: 'sw-errors' });
 
 let version;
 for (let i = 0; i < 60; i++) { try { version = await (await fetch(`http://127.0.0.1:${PORT}/json/version`)).json(); break; } catch { await sleep(300); } }
@@ -37,7 +39,7 @@ for (let i = 0; i < 40 && !sw; i++) {
   }
   if (!sw) await sleep(400);
 }
-if (!sw) { console.error('no service worker'); browser.kill(); process.exit(1); }
+if (!sw) { console.error('no service worker'); closeBrowser(); process.exit(1); }
 
 await send('Runtime.enable', {}, sw.sessionId);
 await send('Log.enable', {}, sw.sessionId).catch(() => {});
@@ -140,5 +142,5 @@ for (const e of events) {
   if (e.method === 'Log.entryAdded') console.log('popup log:', e.params.entry.level, e.params.entry.text.slice(0, 300));
 }
 
-ws.close(); browser.kill();
+ws.close(); closeBrowser();
 await sleep(300); try { rmSync(profile, { recursive: true, force: true }); } catch {}

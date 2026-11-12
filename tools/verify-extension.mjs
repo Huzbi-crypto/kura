@@ -2,6 +2,7 @@
 // three things: the service worker registers, the popup renders, and the storage/DB layer opens.
 // usage: node tools/verify-extension.mjs [extensionDir]
 import { spawn } from 'node:child_process';
+import { guardBrowser } from './_browser.mjs';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -17,6 +18,7 @@ const browser = spawn(EDGE, [
   `--disable-extensions-except=${dir}`, `--load-extension=${dir}`,
   '--no-first-run', '--no-default-browser-check', 'about:blank',
 ], { stdio: 'ignore' });
+const closeBrowser = guardBrowser(browser, { label: 'verify-extension' });
 
 let version;
 for (let i = 0; i < 60; i++) {
@@ -50,7 +52,7 @@ for (let i = 0; i < 40 && !sw; i++) {
 if (!sw) {
   const list = await (await fetch(`http://127.0.0.1:${PORT}/json/list`)).json();
   console.error('service worker not found. targets:', list.map((t) => `${t.type} ${t.url}`).join('\n  '));
-  browser.kill(); process.exit(1);
+  closeBrowser(); process.exit(1);
 }
 console.log('service worker: OK  id=' + extId);
 
@@ -117,6 +119,6 @@ writeFileSync(join(dir, 'verify-popup.png'), Buffer.from(shot.data, 'base64'));
 console.log('screenshot -> ' + join(dir, 'verify-popup.png'));
 
 ws.close();
-browser.kill();
+closeBrowser();
 await sleep(400);
 try { rmSync(profile, { recursive: true, force: true }); } catch {}

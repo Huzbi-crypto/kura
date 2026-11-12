@@ -32,3 +32,7 @@ worker/.wrangler/
 
 # local debug artefacts
 debug-*.png
+
+# commit message scratch files
+.commitmsg
+.cm*
