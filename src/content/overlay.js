@@ -33,6 +33,28 @@
 
   const squash = (t) => String(t || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
+  // Bot walls ("Just a moment...", "Please wait", "Checking your browser") are not manga.
+  // One of these was recorded as a series called "Just a Moment" on mangadot, which is exactly
+  // the kind of junk entry that pollutes the library and syncs to every tracker.
+  const CHALLENGE_RE = /\b(just a moment|checking your browser|please wait|attention required|verify you are human|are you a robot|access denied|ddos-guard|enable javascript and cookies)\b/i;
+
+  function isInterstitial() {
+    const title = (document.title || '').trim();
+    if (CHALLENGE_RE.test(title)) return true;
+    if (document.querySelector('#challenge-form, #challenge-running, #cf-challenge-running, .cf-browser-verification, [id^="cf-"], script[src*="challenges.cloudflare.com"]')) return true;
+    const text = (document.body?.innerText || '').trim();
+    if (text.length < 400 && CHALLENGE_RE.test(text)) return true;
+    return false;
+  }
+
+  /** real manga pages are images: a reader view with none is a bot wall, an error, or a stub */
+  function hasPages() {
+    return [...document.querySelectorAll('img')].some((i) => {
+      const r = i.getBoundingClientRect();
+      return r.width > 200 || i.naturalWidth > 300;
+    });
+  }
+
   // reader brands that show up in <title>/og:title instead of the series name
   const READER_BRANDS = ['stonescape', 'atsu', 'atsuмoe', 'weebcentral', 'mangadot', 'mangadex',
     'mangahere', 'mangakakalot', 'batoto', 'bato', 'reader', 'home', 'manga', 'read manga online'];
@@ -251,6 +273,7 @@
   const flash = (msg, ms = 2200) => { toast.textContent = msg; setTimeout(() => { if (toast.textContent === msg) toast.textContent = ''; }, ms); };
 
   async function report(force = false) {
+    if (isInterstitial()) { hide(); return; } // a bot wall is not content
     const d = detect();
     if (!d.title) {
       // tell the worker anyway: "Kura ran here but could not read the page" is the log line
@@ -266,6 +289,18 @@
     }
     const key = d.title + '|' + (d.chapter ?? '?');
     if (!force && current === key) return;
+
+    // on a site Kura has no rule for, only record what actually looks like a chapter view:
+    // stay visible so the user knows Kura is here, but create nothing
+    if (!HOST_RULES[d.host]?.chapter && d.chapter == null && !hasPages()) {
+      current = key;
+      label.textContent = 'Kura · page not recognised';
+      readEl.textContent = '';
+      dots.innerHTML = '';
+      manualMode(false);
+      reveal(9000);
+      return;
+    }
     current = key;
     completedFor = null;
     userScrolled = false;
@@ -354,6 +389,7 @@
     runs++;
     void (async () => {
       try {
+      if (isInterstitial()) return;
       const d = detect();
       if (!d.title || d.chapter == null) return;
       const pct = readPercent();

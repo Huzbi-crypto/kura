@@ -3,6 +3,18 @@
 All notable changes to Kura. Format: [Keep a Changelog](https://keepachangelog.com/), versioning
 follows [SemVer](https://semver.org/).
 
+## [0.7.5] — unreleased
+
+- **Bot walls are never content.** Cloudflare's "Just a moment…" interstitial on mangadot was
+  recorded as a series called "Just a Moment", with a chapter and cover, and would have synced to
+  every tracker. Detected now by title, challenge selectors (`#challenge-form`,
+  `[id^="cf-"]`, turnstile scripts) and short body text — on every site, including ones Kura has a
+  rule for. The background worker rejects such titles too, so a stale content script cannot
+  reintroduce it.
+- **A reader page with no pages is not a chapter.** On a site without a rule, Kura only records a
+  page that actually contains manga images; otherwise the pill says "page not recognised" and
+  creates nothing.
+
 ## [0.7.4] — unreleased
 
 - **mangadot is `mangadot.net`, not `.com`.** The manifest pointed at `mangadot.com`, which is a

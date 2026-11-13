@@ -38,6 +38,12 @@ const pages = {
       <main>${imgs(3, 900)}<p>End of chapter 0</p></main>
       <button id="pp" aria-label="Page 1 of 3, open page selector">1 / 3 · 33 %</button>
     </body></html>`,
+  // a Cloudflare challenge on a reader URL: this was recorded as a series called "Just a Moment"
+  '/chapter/999': `<!doctype html><html><head><meta charset="utf-8">
+    <title>Just a moment...</title>
+    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js"></script></head>
+    <body style="background:#fff"><div id="challenge-form"></div><h2>Just a moment...</h2>
+    <p>Checking your browser before accessing mangadot.net</p></body></html>`,
   // an SPA reader Kura cannot parse: the pill must say so instead of disappearing
   '/read/some-manga-hidden': `<!doctype html><html><head><meta charset="utf-8">
     <title>Reader</title></head><body style="margin:0;background:#111"><div id="app"></div></body></html>`,
@@ -161,6 +167,12 @@ fails += await scenario('mangadot paged reader', '/chapter/120889', [
   ['waited for the poll', `(async () => { await new Promise(r => setTimeout(r, 2200)); return 'waited'; })()`, (v) => v === 'waited'],
   ['debug state', `JSON.stringify({ debug: !!window.__kuraDebug, paged: window.__kuraDebug?.pagedAtLastPage(), end: window.__kuraDebug?.endMarkerVisible(), bottom: window.__kuraDebug?.chapterEndVisible(), state: window.__kuraDebug?.state() })`, (v) => { console.log('     debug:', v); return true; }],
   ['last page completes without scrolling', `JSON.stringify(window.__sent.map(m => !!m.completed))`, (v) => v === '[false,true]'],
+], 'mangadot.net');
+
+// a bot wall must never be treated as a chapter
+fails += await scenario('cloudflare wall', '/chapter/999', [
+  ['nothing is reported', `JSON.stringify(window.__sent)`, (v) => v === '[]'],
+  ['the pill stays hidden', `(() => { const h = document.querySelector('body > div:last-child'); const w = h && h.shadowRoot && h.shadowRoot.querySelector('.wrap'); return w ? w.className : 'none'; })()`, (v) => v.includes('idle')],
 ], 'mangadot.net');
 
 // an unrecognised layout must not look like a dead extension: a pill with the slug and a way in

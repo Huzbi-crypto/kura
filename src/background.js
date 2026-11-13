@@ -53,6 +53,11 @@ async function ensureSeries(title, host) {
 const handlers = {
   /** a reader page told us which chapter is open */
   async reading({ title, chapter, volume, url, host, completed }) {
+    // defence in depth: a bot wall must never become a library entry, whatever the content script does
+    if (title && /\b(just a moment|checking your browser|please wait|attention required|verify you are human|access denied|ddos-guard)\b/i.test(title)) {
+      await logEvent('reading', `ignored a bot wall titled "${title}"`, { host });
+      return { ok: false, reason: 'bot wall page, ignored' };
+    }
     if (!title || chapter == null) {
       await logEvent('reading', 'page seen but no series/chapter parsed', { host, url: String(url || '').slice(0, 120) });
       return { ok: false, reason: 'no series/chapter detected' };
