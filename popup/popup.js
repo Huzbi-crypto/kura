@@ -275,6 +275,7 @@ function bindSettings() {
 }
 
 /* ---------- boot ---------- */
+document.querySelector('.brand span').textContent = `manga tracker · v${chrome.runtime.getManifest().version}`;
 document.querySelectorAll('.tabs button').forEach((b) => (b.onclick = () => { show(b.dataset.view); if (b.dataset.view === 'settings') loadDiag(); }));
 $('#filter').oninput = renderLibrary;
 $('#go').onclick = search;

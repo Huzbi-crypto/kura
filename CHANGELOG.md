@@ -3,6 +3,15 @@
 All notable changes to Kura. Format: [Keep a Changelog](https://keepachangelog.com/), versioning
 follows [SemVer](https://semver.org/).
 
+## [0.9.3] — unreleased
+
+- **The popup shows its build** (`manga tracker · v0.9.3`), and the series-page panel marks the
+  document with `data-kura-status`. Two rounds of "the panel is missing" were an older build still
+  loaded; that should never need guessing again.
+- **Browser tests are opt-in** (`KURA_BROWSER_TESTS=1`). They were the source of the stale Alt+Tab
+  entries Windows kept showing: each headless Edge run registers hidden windows, and they linger
+  until the shell restarts. Visual verification now goes through camofox, which does not.
+
 ## [0.9.2] — unreleased
 
 The series-page panel, verified on the live sites instead of guessed at.

@@ -15,6 +15,7 @@
   if (!isSeriesPage()) return;
 
   const send = (msg) => chrome.runtime.sendMessage(msg);
+  document.documentElement.dataset.kuraStatus = chrome.runtime.getManifest().version;
   const norm = (t) => String(t || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
   function seriesTitle() {
