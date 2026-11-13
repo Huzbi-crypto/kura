@@ -141,6 +141,20 @@ const handlers = {
     }
     return { ok: true, created, seriesId: s.id, title: s.title, chapter: st?.chapter ?? chapter, trackers: marks };
   },
+  /** series-page panel: the local state for whatever series the page is about */
+  async status({ title }) {
+    if (!title) return { found: false };
+    const all = await S.all();
+    let s = all.find((x) => x.normTitle === normTitle(title)) || null;
+    if (!s) s = bestMatch(title, all)?.series || null;
+    if (!s) return { found: false };
+    const st = await ST.get(s.id);
+    return {
+      found: true, seriesId: s.id, title: s.title,
+      chapter: st.chapter || 0, volume: st.volume || 0, total: s.total || 0,
+      status: st.status || null, links: s.links || {}, trackers: st.trackers || {},
+    };
+  },
   async diag() { return { events: await readEvents(30) }; },
   async clearDiag() { await clearEvents(); return { ok: true }; },
   async library() {

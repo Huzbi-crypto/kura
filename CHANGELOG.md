@@ -3,6 +3,22 @@
 All notable changes to Kura. Format: [Keep a Changelog](https://keepachangelog.com/), versioning
 follows [SemVer](https://semver.org/).
 
+## [0.9.0] — unreleased
+
+**Progress on the site's own series page.**
+
+- A Kura panel appears under the synopsis on a series page for anything already in the library:
+  status (Reading / Completed / Paused / Dropped / Plan to read), chapter and volume position with
+  a progress bar, and one row per linked tracker with its own chapter when it disagrees, plus its
+  sync state (synced / pending / error, with the error on hover).
+- It is themed from the page rather than from Kura: font family, size, line height, ink colour,
+  the nearest painted surface (lifted slightly) and that panel's corner radius are all read at
+  runtime. Verified against atsu.moe's actual values — Geist, 14px, surface `#1d1e20` — so the
+  panel inherits 14px and a `#242528` surface rather than a fixed look.
+- It only renders when the series is in the library, and never on chapter pages.
+- New background message `status` resolves the page title to a local series and returns the merged
+  state for the panel.
+
 ## [0.8.1] — unreleased
 
 A chapter was written into the wrong AniList series. Two independent holes, both closed.

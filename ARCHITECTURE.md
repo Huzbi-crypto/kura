@@ -10,6 +10,7 @@ possible Kura records nothing rather than risk writing progress into a stranger'
 | Layer | File(s) | Responsibility |
 |---|---|---|
 | Reader detection | `src/content/overlay.js` | Which series/chapter is open, when the chapter is finished, the pill UI. |
+| Series-page panel | `src/content/status-card.js` | Progress/status panel under the synopsis, themed from the page. |
 | Routing & policy | `src/background.js` | Message handlers, identity resolution, completion policy, activity log. |
 | Sync | `src/sync.js`, `src/mapping.js` | Local state is canonical; pull the highest chapter, push to every linked tracker. |
 | Trackers | `src/trackers/*.js` | One module per service: auth, read, write, search. |
