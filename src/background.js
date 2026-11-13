@@ -2,7 +2,7 @@
 import { series as S, state as ST, normTitle } from './db.js';
 import { recordProgress, drainQueue, syncSeries, pullInto, pushOut, connected, importTracker, backfillCovers, library as libAll, linkByTitle, trackers } from './sync.js';
 import { newSeries, resolveLinks } from './mapping.js';
-import { bestMatch, normalizeTitle } from './match.js';
+import { bestMatch, normalizeTitle, bestTitleScore } from './match.js';
 import * as mangabaka from './trackers/mangabaka.js';
 import { logEvent, readEvents, clearEvents } from './diag.js';
 
@@ -50,6 +50,35 @@ async function ensureSeries(title, host) {
   return { series: s, created: true };
 }
 
+/**
+ * A page-declared id is only as good as the link it came from: a chapter page can link other
+ * series, and one of those once wrote a chapter into an unrelated AniList entry. Every id is
+ * checked against that tracker's own title for it before it is trusted.
+ */
+async function verifiedIds(ids, title) {
+  const keep = {};
+  for (const [tracker, id] of Object.entries(ids || {})) {
+    const t = trackers.find((x) => x.meta.id === tracker);
+    if (!t) continue;
+    // fail closed: an id for a tracker that is not connected is neither verifiable nor writable,
+    // and an unverifiable id is exactly how a wrong series gets progress written into it
+    if (!(await t.meta.connected())) continue;
+    try {
+      const titles = await t.titleFor(id);
+      if (!titles?.length) {
+        await logEvent('match', `ignored ${tracker}=${id}: no title to verify against`, { title });
+        continue;
+      }
+      const best = bestTitleScore(title, titles);
+      if (best.score >= 0.5) keep[tracker] = id;
+      else await logEvent('match', `rejected ${tracker}=${id} from the page: it is "${best.title}" (${best.score.toFixed(2)})`, { title });
+    } catch (e) {
+      await logEvent('match', `ignored ${tracker}=${id}: verification failed (${e.message})`, { title });
+    }
+  }
+  return keep;
+}
+
 const handlers = {
   /** a reader page told us which chapter is open */
   async reading({ title, chapter, volume, url, host, completed, ids }) {
@@ -67,6 +96,7 @@ const handlers = {
 
     // The reader page often links to the trackers itself. Those ids are facts, while a title
     // match is a guess — "Surviving the Apocalypse" matched the wrong AniList series that way.
+    if (ids && Object.keys(ids).length) ids = await verifiedIds(ids, s.title);
     if (ids && Object.keys(ids).length) {
       s.linkSource = s.linkSource || {};
       const replaced = [];

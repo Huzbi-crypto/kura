@@ -139,6 +139,14 @@ export async function importList() {
   return out;
 }
 
+/** every title MAL knows for an id — used to verify a link before writing to it */
+export async function titleFor(id) {
+  const d = await api(`/manga/${id}?fields=title,alternative_titles`);
+  if (!d?.title) return null;
+  const a = d.alternative_titles || {};
+  return [d.title, a.en, a.ja, ...(a.synonyms || [])].filter(Boolean);
+}
+
 export async function search(query) {
   const d = await api(`/manga?q=${encodeURIComponent(query)}&limit=8&fields=title,alternative_titles,main_picture,num_chapters`);
   return (d?.data || []).map((r) => {

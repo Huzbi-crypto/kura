@@ -314,6 +314,13 @@ export async function fromSource(provider, externalId) {
   }
 }
 
+/** every title MangaBaka knows for an id — used to verify a link before writing to it */
+export async function titleFor(id) {
+  const meta = await metaFor(id);
+  if (!meta) return null;
+  return [meta.title, ...(meta.raw?.titles || []).map((t) => t.title)].filter(Boolean);
+}
+
 /** series metadata by id: cover, chapter count, and the bridged source ids */
 export async function metaFor(id) {
   const d = await jsonFetch(`${API}/v1/series/${id}`, { headers: { Accept: 'application/json' } });

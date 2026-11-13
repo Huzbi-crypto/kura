@@ -113,6 +113,14 @@ export async function importList() {
   return out;
 }
 
+/** every title AniList knows for an id — used to verify a link before writing to it */
+export async function titleFor(id) {
+  const d = await gql(`query ($id: Int) { Media(id: $id, type: MANGA) { id title { romaji english native } synonyms } }`, { id: Number(id) });
+  const m = d.data?.Media;
+  if (!m) return null;
+  return [m.title?.english, m.title?.romaji, m.title?.native, ...(m.synonyms || [])].filter(Boolean);
+}
+
 export async function search(query) {
   const d = await gql(`query ($q: String) { Page(perPage: 8) { media(search: $q, type: MANGA) {
     id title { romaji english native } synonyms coverImage { large } chapters } } }`, { q: query });

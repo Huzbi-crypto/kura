@@ -69,19 +69,43 @@
     return Object.keys(ids).length ? ids : null;
   }
 
+  const norm = (t) => String(t || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+
+  /** does a fetched page describe the series we are reading? guards against sidebar/recommended links */
+  function pageIsThisSeries(html, title) {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const candidates = [
+      doc.querySelector('h1')?.textContent,
+      doc.querySelector('meta[property="og:title"]')?.content,
+      doc.title,
+    ].filter(Boolean).map((t) => norm(t.split(/[|—–]/)[0]));
+    const mine = norm(title);
+    if (!mine) return false;
+    return candidates.some((c) => c && (c === mine || c.includes(mine) || mine.includes(c)));
+  }
+
   let idCache = null;
-  /** the series page is same-origin and cheap; it carries the ids Kura must not guess at */
-  async function collectIds() {
+  /**
+   * Fetch candidate series pages and keep the ids of the one that actually describes this series.
+   * A chapter page can link several other series (related, recommended, promoted); taking the first
+   * `/series/` anchor once linked an unrelated manga and wrote a chapter into it.
+   */
+  async function collectIds(title) {
     if (idCache !== null) return idCache;
-    const host = location.hostname.replace(/^www\./, '');
-    const rule = SITE_RULES[host] || {};
-    const url = rule.seriesUrl ? rule.seriesUrl() : null;
-    if (!url) { idCache = undefined; return undefined; }
-    try {
-      const res = await fetch(url, { credentials: 'same-origin' });
-      idCache = res.ok ? extractTrackerIds(await res.text()) : undefined;
-    } catch {
-      idCache = undefined;
+    idCache = undefined;
+    const anchors = [...document.querySelectorAll('a[href*="/series/"], a[href*="/manga/"]')]
+      .map((a) => a.href)
+      .filter(Boolean);
+    const urls = [...new Set(anchors)].slice(0, 5);
+    for (const url of urls) {
+      try {
+        const res = await fetch(url, { credentials: 'same-origin' });
+        if (!res.ok) continue;
+        const html = await res.text();
+        if (!pageIsThisSeries(html, title)) continue;   // not the series we are reading
+        const ids = extractTrackerIds(html);
+        if (ids) { idCache = ids; break; }
+      } catch { /* try the next candidate */ }
     }
     return idCache;
   }
@@ -357,7 +381,7 @@
     label.innerHTML = `<b>${d.title}</b> · ch ${d.chapter}`;
     paintProgress(readPercent(), false);
     reveal();
-    const ids = await collectIds();
+    const ids = await collectIds(d.title);
     const r = await send('reading', ids ? { ...d, ids } : d);
     if (r?.ok) paintDots(r.trackers || {});
     else if (r?.reason) flash(String(r.reason).slice(0, 40));

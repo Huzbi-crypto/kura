@@ -3,6 +3,25 @@
 All notable changes to Kura. Format: [Keep a Changelog](https://keepachangelog.com/), versioning
 follows [SemVer](https://semver.org/).
 
+## [0.8.1] — unreleased
+
+A chapter was written into the wrong AniList series. Two independent holes, both closed.
+
+- **A chapter page links other series.** weebcentral's chapter page carries anchors to related and
+  promoted series; taking the first `/series/` anchor fetched an unrelated manga, and its AniList id
+  was then used for the chapter being read ("Mazumeshi Elf to Yuubokugurashi" for "Surviving the
+  Apocalypse"). Candidate series pages are now fetched and kept only if their own title matches the
+  series in the tab.
+- **Page-declared ids are now verified, and verification fails closed.** Before an id is trusted,
+  the tracker is asked what that id actually is (`titleFor` on AniList, MAL, MangaBaka) and the
+  titles must match. An id for a tracker that is not connected is dropped rather than accepted
+  unchecked, and a failed verification drops the id instead of proceeding — an unverified id is
+  exactly how progress lands in a stranger's list.
+
+Both are covered by tests built from the real case: the recommendation link is skipped
+(`181296`, not `110654`), and the guard scores 0.04 for the wrong series against 1.00 for the right
+one.
+
 ## [0.8.0] — unreleased
 
 Links come from the page, not from guessing.
