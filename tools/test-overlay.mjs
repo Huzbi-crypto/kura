@@ -2,7 +2,7 @@
 // in-chapter percentage, the completion signal, and (critically) that a site's own name in
 // og:title is never mistaken for the series title.
 import { spawn } from 'node:child_process';
-import { guardBrowser } from './_browser.mjs';
+import { guardBrowser, assertNoStragglers } from './_browser.mjs';
 import { mkdtempSync, rmSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -203,5 +203,7 @@ fails += await scenario('unknown layout', '/read/some-manga-hidden', [
 
 console.log(fails ? `\n${fails} overlay check(s) failed` : '\nall overlay checks passed');
 ws.close(); server.close(); closeBrowser();
+await sleep(1500);
+assertNoStragglers();
 await sleep(200); try { rmSync(profile, { recursive: true, force: true }); } catch {}
 process.exit(fails ? 1 : 0);

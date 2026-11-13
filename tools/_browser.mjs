@@ -41,6 +41,23 @@ export function closeBrowser(child, { graceMs = 4000 } = {}) {
   } catch { /* caller's cleanup force-kills */ }
 }
 
+/**
+ * After a run, no test browser may survive. A force-killed headless Chromium leaves a stale entry
+ * in the Windows Alt+Tab switcher until the shell restarts — that is the "invisible window" the
+ * user kept seeing, so this is checked, not assumed.
+ */
+export function assertNoStragglers() {
+  const out = spawnSync('tasklist', ['/FI', 'IMAGENAME eq msedge.exe', '/NH'], { encoding: 'utf8' });
+  const count = (out.stdout || '').split('\n').filter((l) => /msedge\.exe/i.test(l)).length;
+  if (count > 0) {
+    console.error(`LEAK: ${count} msedge.exe process(es) still running after the test run`);
+    spawnSync('taskkill', ['/F', '/IM', 'msedge.exe'], { stdio: 'ignore' });
+    return false;
+  }
+  console.log('cleanup verified: no msedge.exe processes remain');
+  return true;
+}
+
 /** register cleanup for every way this process can end, including a hung await */
 export function guardBrowser(child, { timeoutMs = 180_000, label = 'test' } = {}) {
   let done = false;
