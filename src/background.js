@@ -87,6 +87,12 @@ const handlers = {
       await logEvent('reading', `ignored a bot wall titled "${title}"`, { host });
       return { ok: false, reason: 'bot wall page, ignored' };
     }
+    // a synopsis page or a mis-parsed number must never become a library entry
+    const num = Number(chapter);
+    if (Number.isFinite(num) && (num < 0 || num > 5000)) {
+      await logEvent('reading', `ignored implausible chapter ${chapter} on ${host}`, { title });
+      return { ok: false, reason: 'implausible chapter number' };
+    }
     if (!title || chapter == null) {
       await logEvent('reading', 'page seen but no series/chapter parsed', { host, url: String(url || '').slice(0, 120) });
       return { ok: false, reason: 'no series/chapter detected' };

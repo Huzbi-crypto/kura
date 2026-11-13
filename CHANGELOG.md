@@ -3,6 +3,20 @@
 All notable changes to Kura. Format: [Keep a Changelog](https://keepachangelog.com/), versioning
 follows [SemVer](https://semver.org/).
 
+## [0.9.1] — unreleased
+
+- **A synopsis page is no longer recorded as progress.** The pill ran on any matched URL, so sitting
+  on a series page could create an entry — complete with a chapter number harvested from something
+  on the page ("ch 73815"). Recording now requires a chapter URL (`/chapter-…`, `/chapters/…`,
+  `/series/<slug>/ch-…`, `/read/…`); series pages belong to the status panel instead.
+- **Implausible chapter numbers are refused** in the worker as well (negative, or above 5000), so a
+  mis-parse cannot reach the library or a tracker.
+- **stonescape.xyz has a real site rule**: series from the page title, chapter from
+  `/series/<slug>/ch-<n>/`, series URL derived from the path. A sidebar link to another series can
+  no longer become the title (it was recording "Things I Want to Do as a 6th Grader · ch 1001").
+- **The status panel always lands somewhere.** If the synopsis block cannot be identified, it is
+  placed at the end of the content column instead of silently not rendering.
+
 ## [0.9.0] — unreleased
 
 **Progress on the site's own series page.**

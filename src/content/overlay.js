@@ -18,15 +18,29 @@
       title: () => (document.title.match(/^[^|]+\|\s*(.+?)\s*\|\s*Weeb Central/i) || [])[1],
       chapter: () => (document.title.match(/^\s*(?:chapter|ch\.?|episode|ep\.?)\s*([0-9]+(?:\.[0-9]+)?)/i) || [])[1],
       seriesUrl: () => document.querySelector('a[href*="/series/"]')?.href || null,
+      isChapter: /^\/chapters\//i,
     },
     // "The Glutton: Devourer of Kings — Ch. 0: 0 | MangaDot"; paged reader, so scroll never finishes
     'mangadot.net': {
       title: () => (document.title.split(/\s+[—–-]\s+Ch\./i)[0] || '').trim(),
       chapter: () => (document.title.match(/\bCh\.\s*([0-9]+(?:\.[0-9]+)?)/i) || [])[1],
       seriesUrl: () => document.querySelector('a[href*="/manga/"]')?.href || null,
+      isChapter: /^\/chapter\//i,
     },
-    'atsu.moe': {},
-    'stonescape.xyz': {},
+    // "Webtoon Character Na Kang Lim - Ch. 5 - StoneScape.~", URL /series/<slug>/ch-5/
+    'stonescape.xyz': {
+      title: () => (document.title.split(/\s+[-–—]\s+Ch\.?\s*[0-9]/i)[0] || '').trim(),
+      chapter: () => {
+        const m = location.pathname.match(/\/ch-([0-9]+(?:\.[0-9]+)?)/i);
+        return m ? m[1] : (document.title.match(/\bCh\.?\s*([0-9]+(?:\.[0-9]+)?)/i) || [])[1];
+      },
+      seriesUrl: () => {
+        const m = location.pathname.match(/^(\/series\/[^/]+)/i);
+        return m ? location.origin + m[1] + '/' : null;
+      },
+      isChapter: /^\/series\/[^/]+\/ch-[0-9]/i,
+    },
+    'atsu.moe': { isChapter: /^\/(read|chapter)\//i },
   };
   const HOST_RULES = SITE_RULES; // older call sites keep working
 
@@ -335,8 +349,18 @@
   const send = (type, payload) => chrome.runtime.sendMessage({ type, ...payload });
   const flash = (msg, ms = 2200) => { toast.textContent = msg; setTimeout(() => { if (toast.textContent === msg) toast.textContent = ''; }, ms); };
 
+  /** a synopsis page is not a chapter: recording there created junk entries with impossible numbers */
+  function isChapterPage() {
+    const host = location.hostname.replace(/^www\./, '');
+    const rule = SITE_RULES[host];
+    if (rule?.isChapter) return rule.isChapter.test(location.pathname);
+    // "/chapter-42", "/chapters/<id>", "/read/<id>" are chapter pages; "/manga/<id>" is not
+    return /\/(chapter|chapters|ch|read)(\/|[-_]|$)/i.test(location.pathname);
+  }
+
   async function report(force = false) {
     if (isInterstitial()) { hide(); return; } // a bot wall is not content
+    if (!isChapterPage()) { hide(); return; }  // series pages belong to the status panel, not the pill
     const d = detect();
     if (!d.title) {
       // tell the worker anyway: "Kura ran here but could not read the page" is the log line
@@ -453,7 +477,7 @@
     runs++;
     void (async () => {
       try {
-      if (isInterstitial()) return;
+      if (isInterstitial() || !isChapterPage()) return;
       const d = detect();
       if (!d.title || d.chapter == null) return;
       const pct = readPercent();

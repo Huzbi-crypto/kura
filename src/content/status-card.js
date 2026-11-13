@@ -45,6 +45,13 @@
     return block;
   }
 
+  /** last resort: the end of the content column, before comments/chapters */
+  function fallbackAnchor() {
+    const main = document.querySelector('main, article, [role="main"]') || document.body;
+    const kids = [...main.children].filter((c) => (c.textContent || '').trim().length > 60 || c.querySelector?.('p, img'));
+    return kids.length ? kids[kids.length - 1] : main.lastElementChild;
+  }
+
   /** pull the page's own design values so the panel matches it */
   function theme(block, para) {
     // typography comes from the prose itself, surface from the nearest painted panel
@@ -136,7 +143,9 @@
     try { data = await send({ type: 'status', title }); } catch { return; }
     if (!data?.found) { mounted?.remove(); mounted = null; return; }
 
-    const block = findSynopsisBlock();
+    // synopsis block when the layout is readable, otherwise the end of the content column: a
+    // panel that silently fails to appear is worse than one placed a little lower than ideal
+    const block = findSynopsisBlock() || fallbackAnchor();
     if (!block || !block.parentElement) return;
     const para = block.querySelector('p') || block;
     const themed = theme(block, para);
