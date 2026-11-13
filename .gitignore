@@ -33,6 +33,15 @@ worker/.wrangler/
 # local debug artefacts
 debug-*.png
 
+# agent/test scaffolding — local only, never part of the product
+tools/_browser.mjs
+tools/debug-*.mjs
+tools/test-*.mjs
+tools/sw-errors.mjs
+tools/verify-extension.mjs
+tools/load-check.mjs
+tools/detect-test.js
+
 # commit message scratch files
 .commitmsg
 .cm*
