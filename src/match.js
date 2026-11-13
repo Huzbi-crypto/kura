@@ -45,6 +45,15 @@ export function bestTitleScore(title, titles) {
   return best;
 }
 
+/** find the local series a page title refers to: exact, then tolerant, never a guess */
+export function findSeries(title, library) {
+  const norm = normalizeTitle(title);
+  if (!norm) return null;
+  const exact = library.find((s) => (s.normTitle || normalizeTitle(s.title)) === norm);
+  if (exact) return exact;
+  return bestMatch(title, library)?.series || null;
+}
+
 /**
  * Decide which search hit a reader title refers to.
  *

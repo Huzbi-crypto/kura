@@ -15,35 +15,78 @@
   if (!isSeriesPage()) return;
 
   const send = (msg) => chrome.runtime.sendMessage(msg);
-  document.documentElement.dataset.kuraStatus = chrome.runtime.getManifest().version;
+  // never let a missing API kill the panel (older stubs, restricted contexts)
+  try { document.documentElement.dataset.kuraStatus = chrome.runtime.getManifest().version; } catch { /* version is cosmetic */ }
   const norm = (t) => String(t || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+
+  // reader sites put their own name in an <h1> too — stonescape renders "STONESCAPE" above the
+  // series heading — so a naive `document.querySelector('h1')` reported the brand as the series
+  // and the lookup matched nothing.
+  const BRAND = /^(stones?scape|mangadot|weeb ?central|atsu(?:\.moe)?|kura)\b/i;
+  const stripTail = (t) => String(t || '').split(/[|—–]/)[0].replace(/[\s\-–—·]+$/, '').trim();
+
+  /** the page's series heading: the first non-brand heading in the content column */
+  function seriesHeading() {
+    const heads = [...document.querySelectorAll('h1, h2')]
+      .filter((h) => !h.closest('nav, footer, [role="navigation"]'))
+      .map((h) => ({ h, t: stripTail(h.textContent) }))
+      .filter(({ t }) => t.length >= 3 && !BRAND.test(t));
+    return (heads.find((c) => c.h.closest('main, article, [role="main"]')) || heads[0])?.h || null;
+  }
 
   function seriesTitle() {
     const og = document.querySelector('meta[property="og:title"]')?.content;
-    const h1 = document.querySelector('h1')?.textContent;
-    const t = (h1 || og || document.title || '').split(/[|—–]/)[0].trim();
-    return norm(t) ? t : '';
+    const candidates = [seriesHeading()?.textContent, og, document.title]
+      .map(stripTail)
+      .filter((t) => t && !BRAND.test(t));
+    return candidates[0] || '';
   }
 
-  /** the synopsis paragraph block: the longest text block in main, and its container */
+  /** the card holding the series heading and its description: where the panel belongs */
   function findSynopsisBlock() {
-    const scope = document.querySelector('main') || document.body;
-    const paras = [...scope.querySelectorAll('p')]
-      .filter((p) => (p.textContent || '').trim().length > 80 && !p.closest('nav, footer, header'));
+    const heading = seriesHeading();
+    const paras = [...document.querySelectorAll('p')]
+      .filter((p) => (p.textContent || '').trim().length > 60 && !p.closest('nav, footer'));
     if (!paras.length) return null;
-    paras.sort((a, b) => (b.textContent || '').length - (a.textContent || '').length);
-    const first = paras[0];
-    // walk up while the ancestor holds nothing but synopsis-like content; stop at anything
-    // structural (a heading, a list, a table) so the card never lands mid-page
-    let block = first.parentElement;
-    for (let i = 0; i < 2 && block?.parentElement; i++) {
+
+    let target = null;
+    if (heading) {
+      // the description that follows the heading: skip the one-line author/status meta row
+      const after = paras.filter((p) => heading.compareDocumentPosition(p) & Node.DOCUMENT_POSITION_FOLLOWING);
+      target = after.find((p) => (p.textContent || '').trim().length > 100) || after[0] || null;
+    }
+    target ||= paras.sort((a, b) => (b.textContent || '').length - (a.textContent || '').length)[0];
+
+    // climb to the card that holds both the heading and its description, stopping before the
+    // page's own layout containers so the panel never lands at the bottom of the article
+    let block = target;
+    for (let i = 0; i < 6 && block.parentElement; i++) {
       const parent = block.parentElement;
-      const others = [...parent.children].filter((c) => c !== block);
-      if (others.some((c) => /^(H1|H2|H3|UL|OL|TABLE|IMG|BUTTON)$/.test(c.tagName))) break;
-      if (others.some((c) => (c.textContent || '').length > 400)) break;
+      if (!parent || /^(MAIN|BODY|HTML|ARTICLE)$/.test(parent.tagName)) break;
       block = parent;
+      // stop at the card that holds both the title and its description (the hero card), not at the
+      // title's own wrapper, or the panel lands between the heading and the synopsis
+      if (heading && block.contains(heading) && block.contains(target)) break;
     }
     return block;
+  }
+
+  /**
+   * The chapter list section: every reader site has one, and it is exactly where the reader's eye
+   * goes next. Placing the panel immediately above it keeps it out of the hero (which varies wildly
+   * per site) and directly under the description.
+   */
+  function chaptersLandmark() {
+    const label = /^(chapter list|chapters?|episodes?)\b/i;
+    const hit = [...document.querySelectorAll('h1, h2, h3, h4, [role="tab"], button, a')]
+      .find((e) => label.test((e.textContent || '').trim()) && !e.closest('nav, footer'));
+    if (!hit) return null;
+    // climb to the section that holds the chapter rows, not the label's own header row
+    let el = hit;
+    for (let i = 0; i < 3 && el.parentElement && !/^(MAIN|BODY|ARTICLE|HTML)$/.test(el.parentElement.tagName); i++) {
+      el = el.parentElement;
+    }
+    return el;
   }
 
   /** last resort: the end of the content column, before comments/chapters */
@@ -82,22 +125,38 @@
     })();
     const bg = getComputedStyle(panel).backgroundColor || '#1d1e20';
     const panelCs = getComputedStyle(panel);
-    const rgb = (bg.match(/\d+/g) || [0, 0, 0]).map(Number);
-    const lift = rgb.length >= 3 ? `rgb(${rgb[0] + 7}, ${rgb[1] + 7}, ${rgb[2] + 8})` : '#242528';
+
+    // Contrast is a rule, not a sample: reader sites include light themes (stonescape is pale
+    // lavender), where lifting the surface and keeping the page's ink produced invisible text.
+    const rgb = (c) => (String(c).match(/\d+(?:\.\d+)?/g) || []).slice(0, 3).map(Number);
+    const relLum = ([r, g, b]) => {
+      const f = (v) => { const x = v / 255; return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4; };
+      return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+    };
+    const contrast = (a, b) => {
+      const [hi, lo] = [relLum(a), relLum(b)].sort((x, y) => y - x);
+      return (hi + 0.05) / (lo + 0.05);
+    };
+    const bgRgb = rgb(bg);
+    const light = bgRgb.length === 3 ? relLum(bgRgb) > 0.5 : false;
+    const surfaceRgb = bgRgb.length === 3
+      ? bgRgb.map((v) => (light ? Math.max(0, v - 8) : Math.min(255, v + 7)))
+      : [36, 37, 40];
+    let inkRgb = rgb(cs.color);
+    if (inkRgb.length < 3 || contrast(inkRgb, surfaceRgb) < 4.5) inkRgb = light ? [17, 17, 20] : [245, 245, 247];
+    const inkCss = `rgb(${inkRgb.join(', ')})`;
+
     return {
       font: cs.fontFamily,
       size: cs.fontSize,
       height: cs.lineHeight,
-      ink: cs.color,
-      muted: (() => {
-        const sib = block.querySelector('p');
-        return sib ? getComputedStyle(sib).opacity : '0.72';
-      })(),
-      surface: rgb.length >= 3 ? lift : bg,
+      ink: inkCss,
+      muted: `rgba(${inkRgb.join(', ')}, 0.74)`,
+      surface: `rgb(${surfaceRgb.join(', ')})`,
       width: content?.width || null,
       offset: content?.offset || 0,
       accent,
-      line: 'rgba(255,255,255,0.10)',
+      line: `rgba(${inkRgb.join(', ')}, 0.14)`,
       // take the panel's own corner radius so the block reads as one more panel on the page
       radius: panelCs.borderRadius && panelCs.borderRadius !== '0px' ? panelCs.borderRadius : '8px',
     };
@@ -129,7 +188,7 @@
 
   function card(data, t) {
     const wrap = el('section', {
-      margin: '20px 0', padding: '14px 16px', background: t.surface,
+      margin: '16px 0 12px', padding: '14px 16px', background: t.surface,
       width: t.width ? `${t.width}px` : undefined,
       maxWidth: t.width ? `${t.width}px` : undefined, marginLeft: t.offset ? `${t.offset}px` : undefined,
       boxSizing: 'border-box',
@@ -150,7 +209,7 @@
     // progress bar: replaces the site's own rating line, so neutral rather than a brand colour
     const track = el('div', { position: 'relative', height: '5px', borderRadius: '3px', background: 'rgba(255,255,255,0.18)', overflow: 'hidden', flex: '0 0 auto' });
     const pct = data.total ? Math.min(100, Math.round(((data.chapter || 0) / data.total) * 100)) : 0;
-    track.append(el('i', { position: 'absolute', inset: '0 auto 0 0', width: `${pct}%`, background: t.accent || t.ink, opacity: '0.9', display: 'block' }));
+    track.append(el('i', { position: 'absolute', inset: '0 auto 0 0', borderRadius: '999px', width: `${pct}%`, background: t.accent || t.ink, opacity: '0.9', display: 'block' }));
     wrap.append(track);
 
     const rows = el('div', { display: 'flex', columnGap: '20px', rowGap: '8px', flexWrap: 'wrap', opacity: '0.85' });
@@ -172,20 +231,30 @@
   }
 
   let mounted = null;
+  const note = (msg, data) => Promise.resolve(send({ type: 'note', kind: 'panel', msg, data })).catch(() => {});
 
   async function render() {
     const title = seriesTitle();
-    if (!title) return;
+    if (!title) { note('no series title on this page'); return; }
     let data;
-    try { data = await send({ type: 'status', title }); } catch { return; }
-    if (!data?.found) { mounted?.remove(); mounted = null; return; }
+    try {
+      // the worker sleeps often: one retry, and never fail silently
+      data = await send({ type: 'status', title }).catch(() => send({ type: 'status', title }));
+    } catch (e) {
+      await note(`status lookup failed: ${e.message}`, { title });
+      return;
+    }
+    if (!data?.found) { mounted?.remove(); mounted = null; await note(`not in the library: "${title}"`, { title }); return; }
 
     // synopsis block when the layout is readable, otherwise the end of the content column: a
     // panel that silently fails to appear is worse than one placed a little lower than ideal
     const host = location.hostname.replace(/^www\./, '');
-    const anchor = ANCHORS[host]?.() || null;
+    const anchor = ANCHORS[host]?.() || (() => {
+      const list = chaptersLandmark();
+      return list ? { before: list, geom: list } : null;
+    })();
     const block = findSynopsisBlock() || fallbackAnchor();
-    if (!anchor && (!block || !block.parentElement)) return;
+    if (!anchor && (!block || !block.parentElement)) { await note('no place to insert the panel', { title }); return; }
 
     const para = block?.querySelector?.('p') || block;
     // geometry from the section this panel introduces, so it lines up with the content grid
@@ -203,9 +272,11 @@
     else if (anchor?.before?.parentElement) anchor.before.insertAdjacentElement('beforebegin', node);
     else block.insertAdjacentElement('afterend', node);
     mounted = node;
+    if (lastNoteFor !== title) { lastNoteFor = title; await note(`panel shown for "${title}"`, { title }); }
   }
 
   let last = '';
+  let lastNoteFor = '';
   function tick() {
     const key = location.pathname + '|' + seriesTitle();
     if (key === last) return;

@@ -3,6 +3,26 @@
 All notable changes to Kura. Format: [Keep a Changelog](https://keepachangelog.com/), versioning
 follows [SemVer](https://semver.org/).
 
+## [0.9.4] — unreleased
+
+Why the panel was missing on stonescape and mangadot, with the cause found on the live pages.
+
+- **stonescape puts its own name in an `h1` above the series.** `seriesTitle()` took the first `h1`
+  and got `STONESCAPE`, so Kura searched the trackers for "STONESCAPE" and found nothing. Titles now
+  come from the first non-brand heading in the content column.
+- **The panel is placed above the chapter list**, a landmark every reader site has, instead of
+  "after the synopsis" (which landed 2800px down where the synopsis block was not recognised) or
+  inside the hero (which put it over the title). Width comes from that section, so it lines up with
+  the chapter column on both sites.
+- **Contrast is enforced, not sampled.** stonescape is a light theme: lifting the surface while
+  keeping the page's ink produced near-invisible text. Ink, muted text and hairlines are now derived
+  from a contrast check against the panel surface.
+- **The panel no longer fails silently.** Every outcome is logged to Activity: `not in the
+  library: "<title>"`, `no series title on this page`, `no place to insert the panel`, or `panel
+  shown for "<title>"` — so a missing panel says why it is missing.
+- Verified live: stonescape (`Webtoon Character Na Kang Lim`) and mangadot (`The Glutton`), both
+  reaching Cloudflare with camofox and measured in the page, not on a copy.
+
 ## [0.9.3] — unreleased
 
 - **The popup shows its build** (`manga tracker · v0.9.3`), and the series-page panel marks the

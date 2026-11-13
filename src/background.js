@@ -2,7 +2,7 @@
 import { series as S, state as ST, normTitle } from './db.js';
 import { recordProgress, drainQueue, syncSeries, pullInto, pushOut, connected, importTracker, backfillCovers, library as libAll, linkByTitle, trackers } from './sync.js';
 import { newSeries, resolveLinks } from './mapping.js';
-import { bestMatch, normalizeTitle, bestTitleScore } from './match.js';
+import { bestMatch, normalizeTitle, bestTitleScore, findSeries } from './match.js';
 import * as mangabaka from './trackers/mangabaka.js';
 import { logEvent, readEvents, clearEvents } from './diag.js';
 
@@ -149,17 +149,24 @@ const handlers = {
   },
   /** series-page panel: the local state for whatever series the page is about */
   async status({ title }) {
-    if (!title) return { found: false };
+    if (!title) return { found: false, reason: 'no title' };
     const all = await S.all();
-    let s = all.find((x) => x.normTitle === normTitle(title)) || null;
-    if (!s) s = bestMatch(title, all)?.series || null;
-    if (!s) return { found: false };
+    const s = findSeries(title, all);
+    if (!s) {
+      await logEvent('panel', `not in the library: "${title}"`, { title });
+      return { found: false, reason: 'not in library' };
+    }
     const st = await ST.get(s.id);
     return {
       found: true, seriesId: s.id, title: s.title,
       chapter: st.chapter || 0, volume: st.volume || 0, total: s.total || 0,
       status: st.status || null, links: s.links || {}, trackers: st.trackers || {},
     };
+  },
+  /** a page reporting why the panel did or did not appear */
+  async note({ kind, msg, data }) {
+    if (msg) await logEvent(kind || 'note', String(msg).slice(0, 160), data || {});
+    return { ok: true };
   },
   async diag() { return { events: await readEvents(30) }; },
   async clearDiag() { await clearEvents(); return { ok: true }; },
