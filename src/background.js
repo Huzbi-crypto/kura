@@ -52,7 +52,7 @@ async function ensureSeries(title, host) {
 
 const handlers = {
   /** a reader page told us which chapter is open */
-  async reading({ title, chapter, volume, url, host, completed }) {
+  async reading({ title, chapter, volume, url, host, completed, ids }) {
     // defence in depth: a bot wall must never become a library entry, whatever the content script does
     if (title && /\b(just a moment|checking your browser|please wait|attention required|verify you are human|access denied|ddos-guard)\b/i.test(title)) {
       await logEvent('reading', `ignored a bot wall titled "${title}"`, { host });
@@ -64,6 +64,29 @@ const handlers = {
     }
     const { series: s, created } = await ensureSeries(title, host);
     await logEvent('reading', created ? 'new series added' : 'matched local series', { host, title, chapter, completed: Boolean(completed) });
+
+    // The reader page often links to the trackers itself. Those ids are facts, while a title
+    // match is a guess — "Surviving the Apocalypse" matched the wrong AniList series that way.
+    if (ids && Object.keys(ids).length) {
+      s.linkSource = s.linkSource || {};
+      const replaced = [];
+      for (const [tracker, id] of Object.entries(ids)) {
+        if (s.links?.[tracker] && s.links[tracker] !== id) replaced.push(`${tracker}: ${s.links[tracker]} -> ${id}`);
+        s.links = { ...(s.links || {}), [tracker]: id };
+        s.linkSource[tracker] = 'page';
+      }
+      // anything derived from a now-corrected chain is untrustworthy; re-resolve instead of keeping it
+      for (const tracker of Object.keys(s.links || {})) {
+        if (ids[tracker] === undefined && s.linkSource[tracker] !== 'page') {
+          delete s.links[tracker];
+          delete s.linkSource[tracker];
+        }
+      }
+      await S.put(s);
+      await resolveLinks(s);
+      await logEvent('match', `ids from the page: ${Object.entries(ids).map(([k, v]) => `${k}=${v}`).join(', ')}`
+        + (replaced.length ? ` (corrected ${replaced.join('; ')})` : ''), { title: s.title });
+    }
 
     // every connected tracker needs a link, not just "the series has none at all" — that gap is
     // why AniList and MangaBaka never appeared in the activity log: they were simply unlinked

@@ -1,5 +1,5 @@
 // test-match.mjs — the reader-title matcher must accept decorated titles and refuse near-misses.
-import { normalizeTitle, similarity, bestMatch, bestTitleScore } from '../src/match.js';
+import { normalizeTitle, similarity, bestMatch, bestTitleScore, pickCandidate } from '../src/match.js';
 
 const library = [
   { id: 1, title: 'Solo Leveling', normTitle: normalizeTitle('Solo Leveling') },
@@ -55,6 +55,23 @@ const romajiOnly = bestTitleScore('I Only Want To Beat You', [anilistHit.title])
 const rejected = romajiOnly.score < 0.85;
 if (!rejected) fail++;
 console.log(`${rejected ? 'ok  ' : 'FAIL'}  romaji alone is not enough (${romajiOnly.score.toFixed(2)}) - this was the bug`);
+
+// the real failure: two AniList series share the English title "Surviving the Apocalypse"
+const ambiguous = pickCandidate('Surviving the Apocalypse', [
+  { id: 193312, title: 'Manghan Sesangeseo Saranamgi', alt: ['Surviving the Apocalypse'] },
+  { id: 181296, title: 'Jongmareseo Saranamgi', alt: ['Surviving the Apocalypse'] },
+]);
+const refused = ambiguous.kind === 'ambiguous';
+if (!refused) fail++;
+console.log(`${refused ? 'ok  ' : 'FAIL'}  refuses a tie instead of guessing (${ambiguous.kind})`);
+
+const decided = pickCandidate('Surviving the Apocalypse', [
+  { id: 193312, title: 'Manghan Sesangeseo Saranamgi', alt: ['Surviving as a Manghan'] },
+  { id: 181296, title: 'Jongmareseo Saranamgi', alt: ['Surviving the Apocalypse'] },
+]);
+const okDecided = decided.kind === 'match' && decided.top.hit.id === 181296;
+if (!okDecided) fail++;
+console.log(`${okDecided ? 'ok  ' : 'FAIL'}  picks the only real match (${decided.kind})`);
 
 // direct checks used by the reader overlay path
 const checks = [

@@ -3,6 +3,25 @@
 All notable changes to Kura. Format: [Keep a Changelog](https://keepachangelog.com/), versioning
 follows [SemVer](https://semver.org/).
 
+## [0.8.0] — unreleased
+
+Links come from the page, not from guessing.
+
+- **Tracker ids are read from the site's own links.** Reader series pages publish them — weebcentral
+  links `anilist.co/manga/212724`, mangadot links AniList/MangaBaka/MangaDex — and the extension reads
+  the series page (same-origin, cached) and sends those ids with the reading event. Page-declared ids
+  are authoritative: they replace a guessed id, and ids derived from the old chain are discarded and
+  re-resolved.
+- **Ambiguous title matches are refused.** "Surviving the Apocalypse" is the English title of two
+  AniList series (181296 and 193312); the old code took the first search hit and linked the wrong one.
+  Candidates are now all scored, and a near-tie is logged as `ambiguous — not linked` instead of
+  guessing.
+- **weebcentral "Episode N"** pages count as chapters (they were parsed as having no chapter, which
+  is why reading there never synced).
+- **Site rules are data, not branches.** All per-site knowledge — title, chapter, series URL — lives
+  in one `SITE_RULES` table; adding a reader is an entry, not another `if`.
+- **Provenance**: each link records whether it came from the page or from a title guess.
+
 ## [0.7.5] — unreleased
 
 - **Bot walls are never content.** Cloudflare's "Just a moment…" interstitial on mangadot was

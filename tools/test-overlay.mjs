@@ -38,6 +38,20 @@ const pages = {
       <main>${imgs(3, 900)}<p>End of chapter 0</p></main>
       <button id="pp" aria-label="Page 1 of 3, open page selector">1 / 3 · 33 %</button>
     </body></html>`,
+  // weebcentral publishes numbered chapters as "Episode N", and its series page carries the
+  // AniList id — which the extension must read rather than guess from the title
+  '/series/01KT9/wwm-miko': `<!doctype html><html><head><meta charset="utf-8">
+    <title>World Wide Web MIKO! | Weeb Central</title></head><body>
+    <h1>World Wide Web MIKO!</h1>
+    <a href="https://anilist.co/manga/212724" target="_blank">AniList</a>
+    <a href="https://myanimelist.net/manga/99999" target="_blank">MAL</a>
+    </body></html>`,
+  '/chapters/episode2': `<!doctype html><html><head><meta charset="utf-8">
+    <title>Episode 2 | World Wide Web MIKO! | Weeb Central</title></head>
+    <body style="margin:0;background:#111">
+      <a href="/series/01KT9/wwm-miko">World Wide Web MIKO!</a>
+      ${imgs(3, 900)}
+    </body></html>`,
   // a Cloudflare challenge on a reader URL: this was recorded as a series called "Just a Moment"
   '/chapter/999': `<!doctype html><html><head><meta charset="utf-8">
     <title>Just a moment...</title>
@@ -168,6 +182,12 @@ fails += await scenario('mangadot paged reader', '/chapter/120889', [
   ['debug state', `JSON.stringify({ debug: !!window.__kuraDebug, paged: window.__kuraDebug?.pagedAtLastPage(), end: window.__kuraDebug?.endMarkerVisible(), bottom: window.__kuraDebug?.chapterEndVisible(), state: window.__kuraDebug?.state() })`, (v) => { console.log('     debug:', v); return true; }],
   ['last page completes without scrolling', `JSON.stringify(window.__sent.map(m => !!m.completed))`, (v) => v === '[false,true]'],
 ], 'mangadot.net');
+
+// weebcentral: "Episode N" numbering, plus ids read from the series page
+fails += await scenario('weebcentral episode + page ids', '/chapters/episode2', [
+  ['episode counts as a chapter', STATE, (v) => v.includes('ch 2')],
+  ['ids come from the series page', `JSON.stringify(window.__sent[0]?.ids || null)`, (v) => v.includes('212724') && v.includes('99999')],
+], 'weebcentral.com');
 
 // a bot wall must never be treated as a chapter
 fails += await scenario('cloudflare wall', '/chapter/999', [

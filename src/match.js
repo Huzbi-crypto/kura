@@ -46,6 +46,25 @@ export function bestTitleScore(title, titles) {
 }
 
 /**
+ * Decide which search hit a reader title refers to.
+ *
+ * Refusing is a feature: two AniList series can share one English title ("Surviving the
+ * Apocalypse"), and linking the wrong one writes progress into a stranger's list. A near-tie is
+ * reported as ambiguous and left unlinked rather than guessed.
+ */
+export function pickCandidate(title, hits, { min = 0.85, tieWithin = 0.05 } = {}) {
+  const scored = (hits || [])
+    .map((hit) => ({ hit, best: bestTitleScore(title, [hit.title, ...(hit.alt || [])]) }))
+    .filter((x) => x.best.score >= min)
+    .sort((a, b) => b.best.score - a.best.score);
+  if (!scored.length) return { kind: 'none' };
+  const top = scored[0];
+  const rival = scored.find((x) => String(x.hit.id) !== String(top.hit.id) && top.best.score - x.best.score < tieWithin);
+  if (rival) return { kind: 'ambiguous', top, rival };
+  return { kind: 'match', top };
+}
+
+/**
  * Best candidate for a reader title. Returns null when nothing is close enough, so an unknown
  * series is still created (the reader page is real even if the library has never heard of it).
  */

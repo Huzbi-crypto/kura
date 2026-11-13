@@ -6,23 +6,29 @@
   if (window.__kuraLoaded) return;
   window.__kuraLoaded = true;
 
-  const HOST_RULES = {
-    // weebcentral puts everything in the tab title: "Chapter 20 | World Wide Web MIKO! | Weeb Central"
-    // and its chapter URLs are opaque ids (/chapters/01M7...), so the number only exists there
+  // One entry per reader site. Everything site-specific lives here and nowhere else, so adding a
+  // site is a data change rather than another branch inside the detection code.
+  //   title/chapter: read the values from the page
+  //   seriesUrl:     where the series page is, so tracker ids can be read from it (authoritative)
+  const SITE_RULES = {
     'weebcentral.com': {
+      // "Chapter 20 | World Wide Web MIKO! | Weeb Central" — series and number only exist here,
+      // because chapter URLs are opaque ids (/chapters/01M7...). Numbered chapters are sometimes
+      // published as "Episode N" on the same site.
       title: () => (document.title.match(/^[^|]+\|\s*(.+?)\s*\|\s*Weeb Central/i) || [])[1],
-      chapter: () => (document.title.match(/^\s*(?:chapter|ch\.?)\s*([0-9]+(?:\.[0-9]+)?)/i) || [])[1],
+      chapter: () => (document.title.match(/^\s*(?:chapter|ch\.?|episode|ep\.?)\s*([0-9]+(?:\.[0-9]+)?)/i) || [])[1],
+      seriesUrl: () => document.querySelector('a[href*="/series/"]')?.href || null,
     },
-    'atsu.moe': {},
-    'stonescape.xyz': {},
-    // mangadot.net: "The Glutton: Devourer of Kings — Ch. 0: 0 | MangaDot", chapter id in the URL.
-    // It is a *paged* reader, so scroll percentage never reaches the end.
+    // "The Glutton: Devourer of Kings — Ch. 0: 0 | MangaDot"; paged reader, so scroll never finishes
     'mangadot.net': {
       title: () => (document.title.split(/\s+[—–-]\s+Ch\./i)[0] || '').trim(),
       chapter: () => (document.title.match(/\bCh\.\s*([0-9]+(?:\.[0-9]+)?)/i) || [])[1],
+      seriesUrl: () => document.querySelector('a[href*="/manga/"]')?.href || null,
     },
-    'mangadot.com': {},
+    'atsu.moe': {},
+    'stonescape.xyz': {},
   };
+  const HOST_RULES = SITE_RULES; // older call sites keep working
 
   const stripNoise = (t) =>
     String(t || '')
@@ -45,6 +51,39 @@
     const text = (document.body?.innerText || '').trim();
     if (text.length < 400 && CHALLENGE_RE.test(text)) return true;
     return false;
+  }
+
+  const TRACKER_LINK = {
+    anilist: /anilist\.co\/manga\/(\d+)/i,
+    mal: /myanimelist\.net\/manga\/(\d+)/i,
+    mangabaka: /mangabaka\.org\/(?:manga|manhwa|manhua)\/?(\d+)/i,
+  };
+
+  /** pull tracker ids out of a page's links: the site already knows which series this is */
+  function extractTrackerIds(html) {
+    const ids = {};
+    for (const [tracker, re] of Object.entries(TRACKER_LINK)) {
+      const m = String(html || '').match(re);
+      if (m) ids[tracker] = Number(m[1]);
+    }
+    return Object.keys(ids).length ? ids : null;
+  }
+
+  let idCache = null;
+  /** the series page is same-origin and cheap; it carries the ids Kura must not guess at */
+  async function collectIds() {
+    if (idCache !== null) return idCache;
+    const host = location.hostname.replace(/^www\./, '');
+    const rule = SITE_RULES[host] || {};
+    const url = rule.seriesUrl ? rule.seriesUrl() : null;
+    if (!url) { idCache = undefined; return undefined; }
+    try {
+      const res = await fetch(url, { credentials: 'same-origin' });
+      idCache = res.ok ? extractTrackerIds(await res.text()) : undefined;
+    } catch {
+      idCache = undefined;
+    }
+    return idCache;
   }
 
   /** real manga pages are images: a reader view with none is a bot wall, an error, or a stub */
@@ -318,7 +357,8 @@
     label.innerHTML = `<b>${d.title}</b> · ch ${d.chapter}`;
     paintProgress(readPercent(), false);
     reveal();
-    const r = await send('reading', d);
+    const ids = await collectIds();
+    const r = await send('reading', ids ? { ...d, ids } : d);
     if (r?.ok) paintDots(r.trackers || {});
     else if (r?.reason) flash(String(r.reason).slice(0, 40));
   }

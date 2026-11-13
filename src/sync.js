@@ -5,7 +5,7 @@ import * as mangabaka from './trackers/mangabaka.js';
 import * as mal from './trackers/mal.js';
 import { series as S, state as ST, queue as Q, normTitle } from './db.js';
 import { resolveLinks, newSeries } from './mapping.js';
-import { bestTitleScore } from './match.js';
+import { pickCandidate } from './match.js';
 
 export const trackers = [anilist, mangabaka, mal];
 export const trackerMeta = trackers.map((t) => t.meta);
@@ -56,14 +56,19 @@ export async function linkByTitle(s, { force = false } = {}) {
     const id = t.meta.id;
     if (s.links[id]) { log.push(`${id}: already linked`); continue; }
     if (!force && !(await t.meta.connected())) { log.push(`${id}: not connected`); continue; }
-    let hit = null;
-    try { hit = (await t.search(s.title))[0] || null; } catch (e) { log.push(`${id}: search failed (${e.message})`); continue; }
-    if (!hit?.id) { log.push(`${id}: no match`); continue; }
-    // score against every title the tracker knows: a reader title is often only a synonym
-    // ("I Only Want to Beat You" is an AniList synonym, while its main title is romaji)
-    const best = bestTitleScore(s.title, [hit.title, ...(hit.alt || [])]);
-    if (best.score >= 0.85) { s.links[id] = hit.id; log.push(`${id}: linked "${best.title}" (${best.score.toFixed(2)})`); }
-    else log.push(`${id}: best hit "${best.title}" too different (${best.score.toFixed(2)})`);
+    let hits = [];
+    try { hits = (await t.search(s.title)) || []; } catch (e) { log.push(`${id}: search failed (${e.message})`); continue; }
+    // every hit is scored against every title it knows, and a near-tie is refused rather than
+    // guessed: two series can share one English title and only one of them is being read
+    const picked = pickCandidate(s.title, hits);
+    if (picked.kind === 'match') {
+      s.links[id] = picked.top.hit.id;
+      log.push(`${id}: linked "${picked.top.best.title}" (${picked.top.best.score.toFixed(2)})`);
+    } else if (picked.kind === 'ambiguous') {
+      log.push(`${id}: ambiguous — "${picked.top.hit.title}" vs "${picked.rival.hit.title}", not linked`);
+    } else {
+      log.push(`${id}: no confident match`);
+    }
   }
   // always run the id bridge: a series can already have AniList linked and still be missing
   // MangaBaka, and MangaBaka's own title search cannot find most alternate titles
