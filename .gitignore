@@ -45,3 +45,5 @@ tools/detect-test.js
 # commit message scratch files
 .commitmsg
 .cm*
+
+tools/inspect-site.mjs
