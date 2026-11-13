@@ -54,6 +54,22 @@
 
   /** pull the page's own design values so the panel matches it */
   function theme(block, para) {
+    const content = (() => {
+      // match the column the prose lives in, not the whole page container: a full-bleed band that
+      // spans a sidebar gutter reads as an injected widget, and mangadot puts the text in a
+      // narrower column than its wrapper
+      const b = block.getBoundingClientRect();
+      const p = (para || block).getBoundingClientRect();
+      const width = Math.round(Math.min(p.width || b.width, b.width));
+      const offset = Math.round(Math.max(0, p.left - b.left));
+      return width > 240 ? { width, offset } : null;
+    })();
+    const accent = (() => {
+      const a = block.closest('main, article, body')?.querySelector('a[href]');
+      const c = a ? getComputedStyle(a).color : null;
+      // only trust a real accent, not near-white/near-grey link colours
+      return c && c !== 'rgba(0, 0, 0, 0)' ? c : null;
+    })();
     // typography comes from the prose itself, surface from the nearest painted panel
     const cs = getComputedStyle(para || block);
     const panel = (() => {
@@ -77,11 +93,28 @@
         return sib ? getComputedStyle(sib).opacity : '0.72';
       })(),
       surface: rgb.length >= 3 ? lift : bg,
+      width: content?.width || null,
+      offset: content?.offset || 0,
+      accent,
       line: 'rgba(255,255,255,0.10)',
       // take the panel's own corner radius so the block reads as one more panel on the page
       radius: panelCs.borderRadius && panelCs.borderRadius !== '0px' ? panelCs.borderRadius : '8px',
     };
   }
+
+  // Where the panel belongs, per site: the section it sits above. Matching that section's box is
+  // what makes it look like part of the page grid rather than a card nested under the synopsis.
+  const ANCHORS = {
+    // insert above the chapter tabs, but take the width of the chapter panel they open: on mangadot
+    // the tab strip itself is narrow and the wrapper spans the whole page
+    'mangadot.net': () => {
+      const tabs = document.querySelector('main [role="tablist"], [role="tablist"]');
+      if (!tabs) return null;
+      const panel = document.querySelector('main [role="tabpanel"], [role="tabpanel"]');
+      const geom = panel && panel.getBoundingClientRect().width > 400 ? panel : tabs;
+      return { before: tabs, geom };
+    },
+  };
 
   const STATE_TEXT = { reading: 'Reading', completed: 'Completed', paused: 'Paused', dropped: 'Dropped', planning: 'Plan to read', rereading: 'Re-reading' };
   const TRACKERS = { anilist: 'AniList', mal: 'MyAnimeList', mangabaka: 'MangaBaka' };
@@ -95,7 +128,10 @@
 
   function card(data, t) {
     const wrap = el('section', {
-      marginTop: '18px', padding: '14px 16px', background: t.surface,
+      margin: '20px 0', padding: '14px 16px', background: t.surface,
+      width: t.width ? `${t.width}px` : undefined,
+      maxWidth: t.width ? `${t.width}px` : undefined, marginLeft: t.offset ? `${t.offset}px` : undefined,
+      boxSizing: 'border-box',
       border: `1px solid ${t.line}`, borderRadius: t.radius,
       fontFamily: t.font, fontSize: t.size, lineHeight: t.height, color: t.ink,
       display: 'flex', flexDirection: 'column', gap: '12px',
@@ -113,7 +149,7 @@
     // progress bar: replaces the site's own rating line, so neutral rather than a brand colour
     const track = el('div', { position: 'relative', height: '5px', borderRadius: '3px', background: 'rgba(255,255,255,0.18)', overflow: 'hidden', flex: '0 0 auto' });
     const pct = data.total ? Math.min(100, Math.round(((data.chapter || 0) / data.total) * 100)) : 0;
-    track.append(el('i', { position: 'absolute', inset: '0 auto 0 0', width: `${pct}%`, background: t.ink, opacity: '0.85', display: 'block' }));
+    track.append(el('i', { position: 'absolute', inset: '0 auto 0 0', width: `${pct}%`, background: t.accent || t.ink, opacity: '0.9', display: 'block' }));
     wrap.append(track);
 
     const rows = el('div', { display: 'flex', columnGap: '20px', rowGap: '8px', flexWrap: 'wrap', opacity: '0.85' });
@@ -145,12 +181,25 @@
 
     // synopsis block when the layout is readable, otherwise the end of the content column: a
     // panel that silently fails to appear is worse than one placed a little lower than ideal
+    const host = location.hostname.replace(/^www\./, '');
+    const anchor = ANCHORS[host]?.() || null;
     const block = findSynopsisBlock() || fallbackAnchor();
-    if (!block || !block.parentElement) return;
-    const para = block.querySelector('p') || block;
-    const themed = theme(block, para);
+    if (!anchor && (!block || !block.parentElement)) return;
+
+    const para = block?.querySelector?.('p') || block;
+    // geometry from the section this panel introduces, so it lines up with the content grid
+    // instead of inheriting either the prose column or the page container
+    const themeTarget = anchor?.geom || block;
+    const themed = theme(themeTarget, para || themeTarget);
+    if (anchor?.geom && anchor.before?.parentElement) {
+      const g = anchor.geom.getBoundingClientRect();
+      const host_ = anchor.before.parentElement.getBoundingClientRect();
+      themed.width = Math.round(g.width);
+      themed.offset = Math.max(0, Math.round(g.left - host_.left));
+    }
     const node = card(data, themed);
     if (mounted?.isConnected) mounted.replaceWith(node);
+    else if (anchor?.before?.parentElement) anchor.before.insertAdjacentElement('beforebegin', node);
     else block.insertAdjacentElement('afterend', node);
     mounted = node;
   }

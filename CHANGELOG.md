@@ -3,6 +3,19 @@
 All notable changes to Kura. Format: [Keep a Changelog](https://keepachangelog.com/), versioning
 follows [SemVer](https://semver.org/).
 
+## [0.9.2] — unreleased
+
+The series-page panel, verified on the live sites instead of guessed at.
+
+- **mangadot.net placement was wrong.** The panel took the width of the page container, so it ran
+  across the sidebar gutter with dead space on the right. It now sits above the chapter tabs and
+  takes the *chapter column's* box (verified on the live page: 988px at x=427, exactly the tabpanel
+  below it), so it reads as part of the page grid.
+- **The panel matches the prose it belongs to** where the layout gives no section landmark: width
+  and left edge come from the text column, not the page wrapper.
+- Verified on the real mangadot.net page through a browser that passes Cloudflare, and locked into
+  the harness as a mangadot-shaped layout (width, left edge and "above the tabs" are asserted).
+
 ## [0.9.1] — unreleased
 
 - **A synopsis page is no longer recorded as progress.** The pill ran on any matched URL, so sitting
