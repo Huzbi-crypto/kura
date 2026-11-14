@@ -3,6 +3,25 @@
 All notable changes to Kura. Format: [Keep a Changelog](https://keepachangelog.com/), versioning
 follows [SemVer](https://semver.org/).
 
+## [0.9.12] — unreleased
+
+Opening a chapter no longer moves your progress.
+
+- **The bug: a chapter that opens already scrolled counted as read.** The `userScrolled` flag was set
+  from the page's scroll *position*, not from you moving it. Readers restore your place, so a chapter
+  opened on the back of the previous one can appear at the bottom immediately, and the "you scrolled
+  far" rule finished it: opening 73 after finishing 72 pushed 73 to every tracker. The opening
+  position is now recorded and only a real move away from it (200px) counts as scrolling. Covered by
+  `chapter opens at the bottom (restored position)`: open at 96%, nothing is sent, scrolling up sends
+  nothing, scrolling back to 96% sends one completion.
+- **The load-time false end is gone.** The old `chapterEndVisible()` treated the last *laid-out* image
+  as the last page. On a reader that has not laid out its remaining images yet, that is the first
+  page, so it could declare the chapter finished the moment it opened. Removed; completion comes from
+  the end marker, the pager, or reaching the end of the scroll.
+- **95% is back.** Removing it was wrong: you cannot know what sits below a chapter (a comments
+  section can be longer than the chapter), and MAL-Sync finishes at the same threshold. Scrolling to
+  96% with a footer still below finishes the chapter; 93% does not.
+
 ## [0.9.11] — unreleased
 
 A chapter that was only started can no longer be marked read.

@@ -264,7 +264,9 @@
   let current = null;
   let hideTimer = null;
   let completedKey = null;   // `${title}|${chapter}` that was completed, stable across re-renders
-  let userScrolled = false;
+  let userScrolled = false;  // you moved the page yourself, on this chapter
+  let armed = false;         // the opening position has been recorded for this chapter
+  let openTop = 0;
   let lastPath = location.pathname;
   const keyOf = (d) => `${d.title}|${d.chapter}`;
   let lastPct = 'init';
@@ -347,7 +349,12 @@
     }
     // only a real navigation resets the scroll evidence: a re-render makes detect() briefly return a
     // different title, and clearing the flags on that let a completed chapter complete again
-    if (lastPath !== location.pathname) { lastPath = location.pathname; userScrolled = false; }
+    if (lastPath !== location.pathname) {
+      lastPath = location.pathname;
+      userScrolled = false;
+      armed = false;
+      openTop = 0;
+    }
     current = key;
 
     if (d.chapter == null) {
@@ -456,20 +463,31 @@
       const d = detect();
       if (!d.title || d.chapter == null) return;
       const pct = readPercent();
-      if (pct != null && pct > 0) userScrolled = true; // real evidence of scrolling, not a guess
+      if (pct != null && pct > 0) {
+        const el = scroller();
+        const top = el ? el.scrollTop : 0;
+        // The position a chapter OPENS at is not evidence that you read it: atsu restores your place,
+        // so the next chapter can appear at the bottom on its own. Record where it opened and only
+        // count a real move away from there.
+        if (!armed) { armed = true; openTop = top; }
+        if (Math.abs(top - openTop) > 200) userScrolled = true;
+      }
       if (pct !== lastPct) {
         lastPct = pct;
         paintProgress(pct, completedKey === keyOf(d));
       }
-      // A chapter is finished only on evidence that you reached the end of it: an explicit end
-      // marker, a pager sitting on its last page, or the reader scrolled to the bottom of what it
-      // holds after you actually scrolled. Scrolling far is not the same as finishing: the old
-      // `pct >= 95` rule marked chapters read while you were still in the middle of them.
+      // A chapter is finished when you reach the far end of it — at 95%, as MAL-Sync does, because
+      // you cannot know what sits below (a comments section can be longer than the chapter), plus an
+      // explicit end marker or a pager on its last page for readers that never scroll.
       const marker = endMarkerVisible();
       const paged = pagedAtLastPage();
-      const atEnd = userScrolled && atScrollEnd();
-      lastSeen = { pct, atEnd, marker, paged, chapter: d.chapter };
-      if (marker || paged || atEnd) await finishChapter();
+      const farEnough = pct != null && pct >= 95;
+      const atEnd = atScrollEnd();
+      lastSeen = { pct, farEnough, atEnd, marker, paged, chapter: d.chapter, userScrolled };
+      // userScrolled is not decoration: a reader that restores your position puts the next chapter on
+      // screen at the bottom already, and without this the new chapter was completed the moment it
+      // opened, which is how opening chapter 73 moved the trackers from 72 to 73.
+      if (marker || paged || (userScrolled && (farEnough || atEnd))) await finishChapter();
       } catch (e) { lastError = String((e && e.message) || e); }
     })();
   }
