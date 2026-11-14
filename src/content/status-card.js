@@ -23,6 +23,18 @@
   // series heading — so a naive `document.querySelector('h1')` reported the brand as the series
   // and the lookup matched nothing.
   const BRAND = /^(stones?scape|mangadot|weeb ?central|atsu(?:\.moe)?|kura)\b/i;
+  // A brand also appears as a fragment, and the whole name is the trap when the logo is split up:
+  // stonescape's logo is an h1 holding sibling spans "STONE" + "SCAPE", so the first text leaf named
+  // a series "STONE" and every lookup missed. A logo is a link home, and a brand fragment is a
+  // prefix of its own hostname, so both checks are structural rather than a keyword list.
+  const HOST_LABEL = location.hostname.replace(/^www\./, '').split('.')[0].replace(/[^a-z0-9]/gi, '').toLowerCase();
+  const isBrand = (t) => {
+    if (!t) return false;
+    if (BRAND.test(t)) return true;
+    const key = norm(t).replace(/\s+/g, '');
+    return key.length >= 4 && HOST_LABEL.length >= 4 && HOST_LABEL.startsWith(key);
+  };
+  const isLogoHeading = (h) => !!h.closest('a[href="/"]');
   const stripTail = (t) => String(t || '').split(/[|—–]/)[0].replace(/[\s\-–—·]+$/, '').trim();
 
   /**
@@ -44,9 +56,9 @@
   /** the page's series heading: the first non-brand heading in the content column */
   function seriesHeading() {
     const heads = [...document.querySelectorAll('h1, h2')]
-      .filter((h) => !h.closest('nav, footer, [role="navigation"]'))
+      .filter((h) => !h.closest('nav, footer, [role="navigation"]') && !isLogoHeading(h))
       .map((h) => ({ h, t: headingText(h) }))
-      .filter(({ t }) => t.length >= 3 && !BRAND.test(t));
+      .filter(({ t }) => t.length >= 3 && !isBrand(t));
     return (heads.find((c) => c.h.closest('main, article, [role="main"]')) || heads[0])?.h || null;
   }
 
@@ -55,7 +67,7 @@
     const heading = seriesHeading();
     const candidates = [heading ? headingText(heading) : null, og, document.title]
       .map(stripTail)
-      .filter((t) => t && !BRAND.test(t));
+      .filter((t) => t && !isBrand(t));
     return candidates[0] || '';
   }
 
@@ -85,6 +97,11 @@
       // title's own wrapper, or the panel lands between the heading and the synopsis
       if (heading && block.contains(heading) && block.contains(target)) break;
     }
+    // A "card" that swallows the whole page (atsu's info column also holds the chapter list) would
+    // drop the panel thousands of pixels down; the synopsis paragraph itself is the honest anchor.
+    const bh = block.getBoundingClientRect().height;
+    const ph = target.getBoundingClientRect().height;
+    if (bh > Math.max(ph * 3, ph + 240)) block = target;
     return block;
   }
 
@@ -189,6 +206,9 @@
   const ANCHORS = {
     // insert above the chapter tabs, but take the width of the chapter panel they open: on mangadot
     // the tab strip itself is narrow and the wrapper spans the whole page
+    // atsu.moe lists chapters thousands of pixels below the synopsis, so the panel belongs under
+    // the synopsis there; an empty rule means "use the series card, do not use the chapter list"
+    'atsu.moe': () => null,
     'mangadot.net': () => {
       const tabs = document.querySelector('main [role="tablist"], [role="tablist"]');
       if (!tabs) return null;
@@ -271,7 +291,8 @@
     // synopsis block when the layout is readable, otherwise the end of the content column: a
     // panel that silently fails to appear is worse than one placed a little lower than ideal
     const host = location.hostname.replace(/^www\./, '');
-    const anchor = ANCHORS[host]?.() || (() => {
+    const hasSiteRule = Object.prototype.hasOwnProperty.call(ANCHORS, host);
+    const anchor = hasSiteRule ? (ANCHORS[host]() || null) : (() => {
       const list = chaptersLandmark();
       return list ? { before: list, geom: list } : null;
     })();
@@ -292,16 +313,48 @@
     const node = card(data, themed);
     const geomEl = anchor?.geom || anchor?.before;
     const tooNarrow = geomEl && geomEl.getBoundingClientRect().width < Math.max(320, window.innerWidth * 0.3);
-    if (tooNarrow) { await note('landmark too narrow, keeping the previous placement', { title }); }
-    if (mounted?.isConnected) mounted.replaceWith(node);
-    else if (anchor?.before?.parentElement && !tooNarrow) anchor.before.insertAdjacentElement('beforebegin', node);
-    else block.insertAdjacentElement('afterend', node);
+
+    // Candidate positions, best first. Every one is checked for a real, visible box before it is
+    // accepted: reader sites are SPAs that re-render, and a node can be "inserted" into a container
+    // that is zero-height, hidden, or about to be replaced.
+    const content = document.querySelector('main, article, [role="main"]') || document.body;
+    // The synopsis is where the reader is looking; the chapter list is only a fallback, because on
+    // atsu.moe it sits thousands of pixels further down. A spot that would place the panel above
+    // the synopsis (over the title) is rejected.
+    const heading = seriesHeading();
+    const afterSynopsis = (n) => !heading || !heading.isConnected
+      || (heading.compareDocumentPosition(n) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+    const spots = [];
+    if (anchor?.before?.parentElement && !tooNarrow) {
+      spots.push({ how: 'above the chapter list', run: () => anchor.before.insertAdjacentElement('beforebegin', node) });
+    }
+    if (block?.parentElement) {
+      spots.push({ how: 'after the series card', run: () => block.insertAdjacentElement('afterend', node) });
+    }
+    spots.push({ how: 'end of the content column', run: () => content.append(node) });
+
+    let placed = null;
+    for (const spot of spots) {
+      if (mounted?.isConnected && mounted !== node) mounted.remove();
+      try { spot.run(); } catch { continue; }
+      await nextFrame();
+      const box = node.getBoundingClientRect();
+      if (node.isConnected && box.height > 8 && box.width > 120 && afterSynopsis(node)) { placed = spot; break; }
+    }
+
     mounted = node;
-    if (lastNoteFor !== title) { lastNoteFor = title; await note(`panel shown for "${title}"`, { title }); }
+    // remember how it got there, so it can be put back when the site re-renders
+    reinsert = placed ? placed.run : null;
+    if (!placed) { await note(`panel could not be placed visibly on "${title}"`, { title }); return; }
+    if (lastNoteFor !== title) { lastNoteFor = title; await note(`panel shown for "${title}" (${placed.how})`, { title }); }
   }
 
   let last = '';
   let lastNoteFor = '';
+  let reinsert = null;      // how the panel was placed, so it can be put back
+  let remounts = 0;
+  const nextFrame = () => new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
+
   function tick() {
     const key = location.pathname + '|' + seriesTitle();
     if (key === last) return;
@@ -309,14 +362,38 @@
     if (isSeriesPage()) render();
   }
 
+  /**
+   * Chrome's reader sites are SPAs: they mount, then re-render and drop anything they did not
+   * create. Watching for the panel's own removal and putting it back is what MAL-Sync does too;
+   * re-running tick() here was useless because the URL had not changed.
+   *
+   * "Removed" and "hidden" are both failure: a site that sets display:none on our node leaves it
+   * connected and zero-height, so connectivity alone must never count as placed, and putting the
+   * same hidden node back changes nothing. Only a fresh render does.
+   */
+  const visible = (n) => !!n && n.isConnected && n.getBoundingClientRect().height > 8;
+
+  function keepMounted() {
+    if (!mounted) return;
+    if (visible(mounted)) { remounts = 0; return; }
+    if (remounts >= 12) {
+      if (remounts === 12) { remounts++; note('the site keeps removing the panel; leaving it off'); }
+      return;
+    }
+    remounts++;
+    if (reinsert) { try { reinsert(); } catch { /* fall through */ } if (visible(mounted)) return; }
+    render();
+  }
+
   const start = () => {
     tick();
     // SPAs render late and swap the whole tree on navigation
     setTimeout(tick, 1200);
     setTimeout(tick, 3000);
-    new MutationObserver(() => {
-      if (mounted && !mounted.isConnected) tick();
-    }).observe(document.documentElement, { subtree: true, childList: true });
+    new MutationObserver(() => keepMounted())
+      .observe(document.documentElement, { subtree: true, childList: true });
+    // a site that hides the panel without removing it never fires a mutation on our node
+    setInterval(keepMounted, 1500);
   };
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);

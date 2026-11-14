@@ -15,11 +15,32 @@ Two regressions from 0.9.4, both found by the Activity log it added.
   "Chapters", so the panel was inserted into that rail. A landmark must now be a real column
   (≥45% of the viewport width and taller than 80px), and the panel refuses to insert into anything
   narrower than a column at all.
+- **A site that re-renders no longer takes the panel with it.** The SPA drops any node it did not
+  create, and it can also hide our node without removing it. Both count as a failure: a node that is
+  still connected but zero-height is not placed. The panel is put back, re-rendered when reconnecting
+  changes nothing, and the retry budget resets only after a visible mount.
+- **Placement is measured, not assumed.** Every candidate position (above the chapter list, after the
+  series card, end of the content column) has to produce a real, visible box, and a position that
+  would put the panel above the series heading is rejected. The log names the spot it used.
+- **atsu.moe gets its own rule.** Its chapter list sits thousands of pixels below the synopsis, so the
+  panel anchors to the series card there instead of the chapter landmark.
+- **A page with no series content gets no card.** stonescape's `/series/` route now 404s and its slug
+  pages render only the site chrome and a cookie banner, and the logo is an `h1` whose text is split
+  into spans, so the first text leaf named a series "STONE". Brand fragments are now rejected (a logo
+  is a link home, and a brand fragment is a prefix of its own hostname), and the panel logs
+  `no series title on this page` instead of drawing a card for a series that does not exist.
 - Verified live on all three: atsu (`I Only Want to Beat You`, below the synopsis, above Chapters,
   layout intact), stonescape (`942px`, aligned with the chapter list), mangadot (`868px`, aligned
   with the chapter column, title clean).
+- Re-verified live after the placement rewrite, through the anti-detect browser: atsu (`The Boxer`,
+  618px card matching its 618px synopsis, no overflow), mangadot (`The Glutton: Devourer of Kings`,
+  988px matching the 988px chapter column, above it), weebcentral (`Hunter x Hunter`, 800px matching
+  the column it introduces, above the chapter list), stonescape (no card, `no series title on this
+  page`, because the site serves no series content).
 - The harness now asserts the mangadot case end to end: nested alt-title spans must still produce
-  the series title alone.
+  the series title alone. It also asserts that a hidden panel is re-rendered, that a shell page
+  renders nothing, and that a stonescape-shaped page still names the series and sits above its
+  chapter list.
 
 ## [0.9.4] — unreleased
 
