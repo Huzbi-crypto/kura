@@ -3,6 +3,20 @@
 All notable changes to Kura. Format: [Keep a Changelog](https://keepachangelog.com/), versioning
 follows [SemVer](https://semver.org/).
 
+## [0.9.9] — unreleased
+
+The pill named the series after a label.
+
+- On atsu the reader page has no `h1`, and the link back to the series holds a label and the title in
+  the same anchor: `<a href="/manga/jqb3X">Manhwa Info<span>The Boxer</span></a>`. Reading that
+  anchor's text gave `Manhwa InfoThe Boxer`, which is what the pill showed and what would have been
+  sent to the trackers.
+- atsu now takes its series title and chapter number from `<title>` (`The Boxer - Episode 1`), which
+  is clean on both page types. The case is in the overlay harness, which serves the fixture on the
+  real hostname.
+- Verified on the live reader page: the pill reads `The Boxer · ch 1` and the recorded title is
+  `The Boxer`.
+
 ## [0.9.8] — unreleased
 
 The panel that appeared on some reloads and not others.
