@@ -38,7 +38,7 @@ completes nothing, 96% completes exactly once, and scrolling back up completes n
 
 | Site | Audit | What is specific to it |
 |---|---|---|
-| atsu.moe | 13/13 | Panel goes after the series card, because the chapter list is thousands of pixels lower. Reader has no `h1` and its back-link glues a "Manhwa Info" label to the title, so both come from `<title>`. |
+| atsu.moe | 16/16 | Panel goes after the series card, because the chapter list is thousands of pixels lower. That answer must be a *visible* block: at narrow widths atsu keeps a hidden desktop description in the DOM, and taking it put the panel below the whole chapter list. Reader has no `h1` and its back-link glues a "Manhwa Info" label to the title, so both title and chapter come from `<title>`. |
 | mangadot.net | 13/13 | Panel goes above the chapter tabs, taking the width of the panel they open. Chapter number only exists in `<title>` (`Ch. N`). Paged reader, so it can finish on a pager rather than a scroll. |
 | weebcentral.com | 13/13 | Chapter URLs are opaque ids, so series name and number come from `<title>`. "Episode N" counts as a chapter. Series page links out to publishers, so links must be same-origin. |
 | stonescape.xyz | skipped | The site serves no series content: `/series/` answers "The page you are looking for does not exist" and slug pages render only the chrome. The panel correctly renders nothing. Re-audit when the site is back. |

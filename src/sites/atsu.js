@@ -22,6 +22,10 @@ window.__kura.site({
     const leaves = [...main.querySelectorAll('p, div, section')]
       .filter((el) => el.children.length === 0)
       .filter((el) => !el.closest('nav, footer, [class*="comment" i], [id*="comment" i]'))
+      // a real, visible box: at narrow widths atsu swaps in a collapsed description and leaves the
+      // desktop one in the DOM. Picking the hidden one put the panel at the end of the page, below
+      // the chapter list.
+      .filter((el) => el.getClientRects().length > 0 && el.getBoundingClientRect().height > 8)
       .map((el) => ({ el, t: (el.textContent || '').trim() }))
       .filter(({ t }) => t.length > 80 && !/^(chapter|ch\.?|episode|ep\.?)\s*\d/i.test(t));
     if (!leaves.length) return null;

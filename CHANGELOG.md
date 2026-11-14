@@ -3,6 +3,21 @@
 All notable changes to Kura. Format: [Keep a Changelog](https://keepachangelog.com/), versioning
 follows [SemVer](https://semver.org/).
 
+## [0.9.15] — unreleased
+
+The panel fell to the bottom of the page in a narrow window.
+
+- **Cause: a hidden description.** At narrow widths atsu swaps in a compact layout and leaves the
+  desktop description in the DOM, unrendered. atsu's `synopsis()` took the longest text block without
+  checking whether it had a box, so it picked the hidden one; the card was inserted into a
+  `display:none` subtree, failed the visibility test, and the last resort (end of the content column)
+  put it below the entire chapter list. Measured at 760px on `/manga/O43t`: description at 456, card at
+  2813, below the last chapter row at 2727. With the fix the card is at 518, 16px under the
+  description. This is why every desktop-width check was green.
+- The picker now requires a real visible box (`getClientRects()` non-empty and height above 8px).
+- The per-site audit runs the series page twice, at desktop width and at 820px, and fails if the
+  placement falls through to `end of the content column`. atsu: 16/16.
+
 ## [0.9.14] — unreleased
 
 A site can say where its description is.
