@@ -3,6 +3,21 @@
 All notable changes to Kura. Format: [Keep a Changelog](https://keepachangelog.com/), versioning
 follows [SemVer](https://semver.org/).
 
+## [0.9.13] — unreleased
+
+A chapter counted by mistake can be put back.
+
+- **Progress only ever went up, so a wrong chapter was permanent.** Every path takes the highest value
+  (`max(local, remote)`), which is what stops a stale pull from rolling your reading back. The cost is
+  that a chapter pushed by mistake becomes the truth, every later sync keeps it, and it is fanned out
+  to the other trackers: that is what makes an old false "76" still look like a live bug.
+- **New: set the exact chapter.** The popup card now has a number field beside `+1`. Type a chapter,
+  press Tab or Enter, and that value is written and pushed to every linked tracker, up or down. This is
+  the only path that lowers, and the only way to correct chapters that were counted before 0.9.12.
+- Verified in the extension harness: progress at 72, opening chapter 73 leaves it at 72 and reports
+  `openedOnly`, finishing 73 moves it to 73, and setting 70 lowers it to 70. The popup card renders the
+  field and shows the corrected number.
+
 ## [0.9.12] — unreleased
 
 Opening a chapter no longer moves your progress.

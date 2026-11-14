@@ -1,6 +1,6 @@
 // background.js — service worker: routes reader events, keeps the retry queue warm.
 import { series as S, state as ST, normTitle } from './db.js';
-import { recordProgress, drainQueue, syncSeries, pullInto, pushOut, connected, importTracker, backfillCovers, library as libAll, linkByTitle, trackers } from './sync.js';
+import { recordProgress, setProgress, drainQueue, syncSeries, pullInto, pushOut, connected, importTracker, backfillCovers, library as libAll, linkByTitle, trackers } from './sync.js';
 import { newSeries, resolveLinks } from './mapping.js';
 import { bestMatch, normalizeTitle, bestTitleScore, findSeries } from './match.js';
 import * as mangabaka from './trackers/mangabaka.js';
@@ -197,6 +197,13 @@ const handlers = {
     const st = await ST.get(seriesId);
     const st2 = await recordProgress(seriesId, (st.chapter || 0) + by);
     return st2;
+  },
+  /** set the exact chapter, up or down, and push it: the correction for a chapter counted by mistake */
+  async set({ seriesId, chapter }) {
+    const before = await ST.get(seriesId);
+    const st = await setProgress(seriesId, chapter);
+    if (st) await logEvent('progress', `set ch ${before.chapter || 0} -> ${chapter}`, { seriesId });
+    return st;
   },
   async add({ title, links = {}, cover = null, total = 0 }) {
     const s = newSeries({ title, links, cover, total });

@@ -114,6 +114,27 @@ export async function syncSeries(seriesId) {
 }
 
 /**
+ * Explicit correction: set a series to an exact chapter, up or down, and push it.
+ *
+ * Everything else in Kura is monotonic on purpose (highest wins, so a stale pull cannot roll your
+ * reading back), but that also means a chapter pushed by mistake once can never be taken back: the
+ * false value becomes the truth and every later sync keeps it. This is the one path that lowers.
+ */
+export async function setProgress(seriesId, chapter) {
+  const s = await S.get(seriesId);
+  if (!s) return null;
+  const st = await ST.get(seriesId);
+  const n = Math.max(0, Number(chapter) || 0);
+  st.chapter = n;
+  st.updatedAt = Date.now();
+  const total = s.total || 0;
+  if (total && n >= total) st.status = 'completed';
+  else if (st.status === 'completed') st.status = 'reading';
+  await ST.put(st);
+  return pushOut(s, st);
+}
+
+/**
  * The reading event. `advance: false` only remembers that the chapter was opened — opening a
  * chapter must never count as reading it, which is what pushed every tracker to 67 the moment
  * the page loaded.

@@ -59,6 +59,22 @@ function card(item) {
   const actions = el('div', 'card-actions');
   const plus = el('button', 'primary', '+1');
   plus.onclick = async (e) => { e.stopPropagation(); await send({ type: 'bump', seriesId: item.id, by: 1 }); refresh(); };
+  // the correction control: a chapter counted by mistake can only be fixed by setting it explicitly,
+  // because everything else only ever moves progress up
+  const setCh = el('input', 'set-ch');
+  setCh.type = 'number'; setCh.min = '0'; setCh.step = '1';
+  setCh.value = String(st.chapter || 0);
+  setCh.title = 'Set the exact chapter (up or down) and push it to every tracker';
+  setCh.setAttribute('aria-label', `Set chapter for ${item.title}`);
+  setCh.onclick = (e) => e.stopPropagation();
+  setCh.onchange = async (e) => {
+    e.stopPropagation();
+    const n = Number(setCh.value);
+    if (!Number.isFinite(n) || n < 0 || n === (st.chapter || 0)) return;
+    setCh.disabled = true;
+    await send({ type: 'set', seriesId: item.id, chapter: n });
+    refresh();
+  };
   const sync = el('button', null, 'Sync');
   sync.onclick = async (e) => { e.stopPropagation(); sync.textContent = '…'; await send({ type: 'syncOne', seriesId: item.id }); refresh(); };
   const drop = el('button', 'drop', '×');
@@ -69,7 +85,7 @@ function card(item) {
     await send({ type: 'forget', seriesId: item.id });
     refresh();
   };
-  actions.append(plus, sync, drop);
+  actions.append(plus, setCh, sync, drop);
   body.append(actions);
 
   root.append(cover, body);
