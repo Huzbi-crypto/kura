@@ -3,6 +3,26 @@
 All notable changes to Kura. Format: [Keep a Changelog](https://keepachangelog.com/), versioning
 follows [SemVer](https://semver.org/).
 
+## [0.9.7] — unreleased
+
+One file per reader site, and the wall that a panel was being drawn on.
+
+- **Per-site files, the way MAL-Sync does it.** Every site now has its own file in `src/sites/`
+  carrying its URL patterns, title/chapter extractors and panel placement, registered into
+  `src/sites/registry.js`, and loaded by the manifest before the two content scripts. Nothing in
+  `src/content/` names a host any more, so adding a reader is one new file and cannot regress
+  another site by editing a shared table.
+- **Shared rules live in the registry, once.** What counts as a site's own name (a brand is a
+  fragment of its own hostname) and what counts as a bot wall are used by the panel and the pill
+  alike, so they cannot drift apart.
+- **The panel refuses a challenge page.** mangadot served a Cloudflare wall on a series URL during
+  verification and the panel drew a card titled "Performing security verification". The pill already
+  refused interstitials; the panel now asks the same question and logs `challenge page, not content`.
+- Verified live with the real content scripts at a 25s dwell: atsu (one card, `The Boxer`, after the
+  series card), weebcentral (one card, `Hunter x Hunter`, above the chapter list), stonescape (no
+  card, no series content), mangadot (no card, challenge page). Mangadot's placement is covered by
+  the harness fixture only, because that site kept serving the wall to the verification browser.
+
 ## [0.9.6] — unreleased
 
 Duplicate progress cards, and the version number that did not move.

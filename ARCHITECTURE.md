@@ -9,6 +9,8 @@ possible Kura records nothing rather than risk writing progress into a stranger'
 
 | Layer | File(s) | Responsibility |
 |---|---|---|
+| Site definitions | `src/sites/*.js` | One file per reader site: URL patterns, title/chapter extractors, panel placement. No file outside this directory names a host. |
+| Site registry | `src/sites/registry.js` | Resolves a host to its definition; owns the rules that are cross-site (brand text, bot walls). |
 | Reader detection | `src/content/overlay.js` | Which series/chapter is open, when the chapter is finished, the pill UI. |
 | Series-page panel | `src/content/status-card.js` | Progress/status panel under the synopsis, themed from the page. |
 | Routing & policy | `src/background.js` | Message handlers, identity resolution, completion policy, activity log. |
@@ -60,25 +62,42 @@ slow interval. The pill's ✓ button is the manual escape hatch and marks the ch
 
 ## Site rules
 
-All per-site knowledge lives in one table, `SITE_RULES` in `src/content/overlay.js`:
+Every reader site is its own file in `src/sites/`, the way MAL-Sync gives each site its own folder
+with its URL match and its own extractors. Content scripts cannot import, so the manifest loads the
+registry, then the site files, then the two content scripts, and each site file registers itself:
 
 ```js
-'weebcentral.com': {
-  title:   () => …,           // series name from the page
-  chapter: () => …,           // chapter number from the page
-  seriesUrl: () => …,         // where the tracker links live
-}
+// src/sites/mangadot.js
+window.__kura.site({
+  id: 'mangadot',
+  hosts: ['mangadot.net'],
+  seriesPage: [/^\/manga\/[^/]+\/?$/i],
+  chapterPage: /^\/chapter\//i,
+  title:   () => …,            // series name from the page
+  chapter: () => …,            // chapter number from the page
+  seriesUrl: () => …,          // where the tracker links live
+  placement: () => ({ before, geom }),  // where the panel goes on a series page
+});
 ```
 
-Adding a reader is an entry in that table plus a harness scenario — not a new branch in the
-detection code. Sites with no entry fall back to generic detection (h1, series links, `data-title`,
-URL slug) and are never recorded unless the page actually contains manga-sized images.
+Nothing in `src/content/` branches on a hostname. A definition only overrides what its site does
+differently; anything it leaves out comes from `src/sites/generic.js` (series pages at
+`/manga|series|comic/<id>`, chapter pages at `/chapter|chapters|ch|read`, panel anchored above the
+chapter list). Adding a reader is one new file plus a harness scenario, and it cannot affect another
+site because no shared file was edited.
+
+The rules that are true of every site live in `src/sites/registry.js`: what counts as the site's own
+name (a brand is a fragment of its own hostname, so "STONE" from stonescape's split logo is
+rejected), and what counts as a bot wall. Cross-site lists are kept there rather than in either
+content script, so the panel and the pill cannot disagree.
 
 ## Non-content guards
 
-Bot walls must never become library entries. The content script refuses pages whose title,
-markup (`#challenge-form`, `[id^="cf-"]`, turnstile scripts) or short body text identifies a
-Cloudflare/DDoS-Guard interstitial; the background worker refuses the same titles independently.
+Bot walls must never become library entries, and must never be drawn on either. The shared
+`isInterstitial()` in the registry refuses pages whose title, markup (`#challenge-form`, `[id^="cf-"]`,
+turnstile scripts) or short body text identifies a Cloudflare/DDoS-Guard interstitial, and both the
+pill and the series-page panel ask it before rendering anything; the background worker refuses the
+same titles independently.
 
 ## Failure surfacing
 
@@ -94,14 +113,24 @@ whoever is working on the extension, not part of the shipped product.
 - `tools/test-overlay.mjs` — drives the real content script against fake reader pages served on the
   real hostnames (`--host-resolver-rules`), covering: tall chapter, embedded site name, paged
   reader, "Episode N", unrecognised layout, Cloudflare wall, and page-declared ids.
+- `tools/test-status-card.mjs` — the series-page panel: placement per site, page typography, a site
+  that removes or hides the panel, a mutation flood (exactly one card), a shell page and a challenge
+  page (no card at all).
 - `tools/test-match.mjs` — title normalisation, similarity, ambiguity refusal, using real API data.
 - `tools/test-bridge.mjs` — the MangaBaka `/source/` response shape.
-- Every test run must end with `cleanup verified: no msedge.exe processes remain`; a leaked headless
-  browser leaves a stale Alt+Tab entry until the shell restarts.
+- Both browser harnesses load their scripts through `contentSource()` in `tools/_browser.mjs`, which
+  reads the list out of `manifest.json`, so a test can never run a different file set than the build.
+- Browser harnesses are opt-in (`KURA_BROWSER_TESTS=1`) because each headless run can leave a stale
+  Alt+Tab entry with no process behind it, and the entries accumulate one per run. Every run must end
+  with `cleanup verified: no msedge.exe processes remain`; if the switcher still shows a ghost tile,
+  restart the shell (`Stop-Process -Name explorer`, it relaunches itself). For real pages, drive the
+  anti-detect browser instead: it leaves nothing in Alt+Tab.
 
 ## Known gaps
 
-- `atsu.moe` and `stonescape.xyz` have no site rule; they rely on generic detection.
+- stonescape.xyz currently serves no series content: `/series/` answers "The page you are looking
+  for does not exist" and slug pages render only the site chrome, so its placement is verified
+  against a fixture rather than the live site.
 - weebcentral sits behind Cloudflare, so it can only be exercised in a real browser.
 - MangaBaka's OAuth refresh rotates tokens; a replayed refresh token revokes the session, so the
   refresh is single-flight.

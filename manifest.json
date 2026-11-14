@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Kura — manga tracker",
-  "version": "0.9.6",
+  "version": "0.9.7",
   "description": "Manga-first reading tracker that keeps MyAnimeList, AniList and MangaBaka in step at once.",
   "permissions": ["storage", "alarms", "identity"],
   "host_permissions": [
@@ -24,7 +24,16 @@
         "https://weebcentral.com/*",
         "https://mangadot.net/*"
       ],
-      "js": ["src/content/overlay.js", "src/content/status-card.js"],
+      "js": [
+        "src/sites/registry.js",
+        "src/sites/generic.js",
+        "src/sites/atsu.js",
+        "src/sites/mangadot.js",
+        "src/sites/stonescape.js",
+        "src/sites/weebcentral.js",
+        "src/content/overlay.js",
+        "src/content/status-card.js"
+      ],
       "run_at": "document_idle"
     }
   ],

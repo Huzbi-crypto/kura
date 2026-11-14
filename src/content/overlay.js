@@ -6,43 +6,9 @@
   if (window.__kuraLoaded) return;
   window.__kuraLoaded = true;
 
-  // One entry per reader site. Everything site-specific lives here and nowhere else, so adding a
-  // site is a data change rather than another branch inside the detection code.
-  //   title/chapter: read the values from the page
-  //   seriesUrl:     where the series page is, so tracker ids can be read from it (authoritative)
-  const SITE_RULES = {
-    'weebcentral.com': {
-      // "Chapter 20 | World Wide Web MIKO! | Weeb Central" — series and number only exist here,
-      // because chapter URLs are opaque ids (/chapters/01M7...). Numbered chapters are sometimes
-      // published as "Episode N" on the same site.
-      title: () => (document.title.match(/^[^|]+\|\s*(.+?)\s*\|\s*Weeb Central/i) || [])[1],
-      chapter: () => (document.title.match(/^\s*(?:chapter|ch\.?|episode|ep\.?)\s*([0-9]+(?:\.[0-9]+)?)/i) || [])[1],
-      seriesUrl: () => document.querySelector('a[href*="/series/"]')?.href || null,
-      isChapter: /^\/chapters\//i,
-    },
-    // "The Glutton: Devourer of Kings — Ch. 0: 0 | MangaDot"; paged reader, so scroll never finishes
-    'mangadot.net': {
-      title: () => (document.title.split(/\s+[—–-]\s+Ch\./i)[0] || '').trim(),
-      chapter: () => (document.title.match(/\bCh\.\s*([0-9]+(?:\.[0-9]+)?)/i) || [])[1],
-      seriesUrl: () => document.querySelector('a[href*="/manga/"]')?.href || null,
-      isChapter: /^\/chapter\//i,
-    },
-    // "Webtoon Character Na Kang Lim - Ch. 5 - StoneScape.~", URL /series/<slug>/ch-5/
-    'stonescape.xyz': {
-      title: () => (document.title.split(/\s+[-–—]\s+Ch\.?\s*[0-9]/i)[0] || '').trim(),
-      chapter: () => {
-        const m = location.pathname.match(/\/ch-([0-9]+(?:\.[0-9]+)?)/i);
-        return m ? m[1] : (document.title.match(/\bCh\.?\s*([0-9]+(?:\.[0-9]+)?)/i) || [])[1];
-      },
-      seriesUrl: () => {
-        const m = location.pathname.match(/^(\/series\/[^/]+)/i);
-        return m ? location.origin + m[1] + '/' : null;
-      },
-      isChapter: /^\/series\/[^/]+\/ch-[0-9]/i,
-    },
-    'atsu.moe': { isChapter: /^\/(read|chapter)\//i },
-  };
-  const HOST_RULES = SITE_RULES; // older call sites keep working
+  // One definition per reader site, in src/sites/. Nothing here knows a hostname: the registry
+  // returns the site's own title/chapter/page-type functions, and the generic fallback fills gaps.
+  const site = window.__kura.forHost(location.hostname);
 
   const stripNoise = (t) =>
     String(t || '')
@@ -56,16 +22,8 @@
   // Bot walls ("Just a moment...", "Please wait", "Checking your browser") are not manga.
   // One of these was recorded as a series called "Just a Moment" on mangadot, which is exactly
   // the kind of junk entry that pollutes the library and syncs to every tracker.
-  const CHALLENGE_RE = /\b(just a moment|checking your browser|please wait|attention required|verify you are human|are you a robot|access denied|ddos-guard|enable javascript and cookies)\b/i;
-
-  function isInterstitial() {
-    const title = (document.title || '').trim();
-    if (CHALLENGE_RE.test(title)) return true;
-    if (document.querySelector('#challenge-form, #challenge-running, #cf-challenge-running, .cf-browser-verification, [id^="cf-"], script[src*="challenges.cloudflare.com"]')) return true;
-    const text = (document.body?.innerText || '').trim();
-    if (text.length < 400 && CHALLENGE_RE.test(text)) return true;
-    return false;
-  }
+  // The rule lives in the registry so the panel and this pill can never disagree about it.
+  const isInterstitial = () => window.__kura.isInterstitial();
 
   const TRACKER_LINK = {
     anilist: /anilist\.co\/manga\/(\d+)/i,
@@ -132,16 +90,15 @@
     });
   }
 
-  // reader brands that show up in <title>/og:title instead of the series name
-  const READER_BRANDS = ['stonescape', 'atsu', 'atsuмoe', 'weebcentral', 'mangadot', 'mangadex',
-    'mangahere', 'mangakakalot', 'batoto', 'bato', 'reader', 'home', 'manga', 'read manga online'];
+  // Reader words that are never a series name. Anything host-specific is handled structurally by
+  // the registry (a brand is a prefix of its own hostname), so this list stays free of site names.
+  const READER_BRANDS = ['reader', 'home', 'read manga online', 'manga', 'read', 'chapter'];
 
   /** the site's own name must never stand in for the series name (stonescape.xyz does this) */
   function isSiteName(text, host) {
     const a = squash(text);
-    const h = squash(host).replace(/^(www|m|read)$/, '');
     if (!a || a.length < 3) return true;
-    if (a === h || (h && (h.includes(a) || a.includes(h)))) return true;
+    if (window.__kura.isBrand(text)) return true;
     return READER_BRANDS.some((b) => squash(b) === a);
   }
 
@@ -156,7 +113,7 @@
   }
 
   function detectTitle(host) {
-    const rule = HOST_RULES[host] || {};
+    const rule = site;
     const og = (p) => document.querySelector(`meta[property="${p}"], meta[name="${p}"]`)?.content || '';
     if (rule.title) {
       const t = stripNoise(rule.title() || '');
@@ -182,7 +139,7 @@
 
   function detect() {
     const host = location.hostname.replace(/^www\./, '');
-    const rule = HOST_RULES[host] || {};
+    const rule = site;
     const title = detectTitle(host);
     let chapter = rule.chapter ? rule.chapter() : null;
     if (!chapter) {
@@ -351,11 +308,9 @@
 
   /** a synopsis page is not a chapter: recording there created junk entries with impossible numbers */
   function isChapterPage() {
-    const host = location.hostname.replace(/^www\./, '');
-    const rule = SITE_RULES[host];
-    if (rule?.isChapter) return rule.isChapter.test(location.pathname);
-    // "/chapter-42", "/chapters/<id>", "/read/<id>" are chapter pages; "/manga/<id>" is not
-    return /\/(chapter|chapters|ch|read)(\/|[-_]|$)/i.test(location.pathname);
+    // the site's own pattern when it has one, otherwise the generic table's
+    if (site.chapterPage) return site.chapterPage.test(location.pathname);
+    return false;
   }
 
   async function report(force = false) {
@@ -379,7 +334,7 @@
 
     // on a site Kura has no rule for, only record what actually looks like a chapter view:
     // stay visible so the user knows Kura is here, but create nothing
-    if (!HOST_RULES[d.host]?.chapter && d.chapter == null && !hasPages()) {
+    if (!site.chapter && d.chapter == null && !hasPages()) {
       current = key;
       label.textContent = 'Kura · page not recognised';
       readEl.textContent = '';

@@ -5,35 +5,25 @@
   if (window.__kuraStatus) return;
   window.__kuraStatus = true;
 
-  const SERIES_PAGE = [
-    /^\/manga\/[^/]+\/?$/i,      // atsu.moe, mangadot.net
-    /^\/series\/[^/]+\/?$/i,     // weebcentral, stonescape
-    /^\/comic\/[^/]+\/?$/i,
-  ];
+  // Everything site-specific lives in src/sites/. This file owns the panel: title ladder, theme
+  // sampling, card markup and mounting.
+  const site = window.__kura.forHost(location.hostname);
+  const SERIES_PAGE = site.seriesPage || [];
   const isSeriesPage = () => SERIES_PAGE.some((re) => re.test(location.pathname))
-    && !/\/(chapter|chapters|read)\b/i.test(location.pathname);
+    && !(site.chapterPage && site.chapterPage.test(location.pathname));
   if (!isSeriesPage()) return;
 
   const send = (msg) => chrome.runtime.sendMessage(msg);
   // never let a missing API kill the panel (older stubs, restricted contexts)
   try { document.documentElement.dataset.kuraStatus = chrome.runtime.getManifest().version; } catch { /* version is cosmetic */ }
-  const norm = (t) => String(t || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
   // reader sites put their own name in an <h1> too — stonescape renders "STONESCAPE" above the
   // series heading — so a naive `document.querySelector('h1')` reported the brand as the series
   // and the lookup matched nothing.
-  const BRAND = /^(stones?scape|mangadot|weeb ?central|atsu(?:\.moe)?|kura)\b/i;
-  // A brand also appears as a fragment, and the whole name is the trap when the logo is split up:
-  // stonescape's logo is an h1 holding sibling spans "STONE" + "SCAPE", so the first text leaf named
-  // a series "STONE" and every lookup missed. A logo is a link home, and a brand fragment is a
-  // prefix of its own hostname, so both checks are structural rather than a keyword list.
-  const HOST_LABEL = location.hostname.replace(/^www\./, '').split('.')[0].replace(/[^a-z0-9]/gi, '').toLowerCase();
-  const isBrand = (t) => {
-    if (!t) return false;
-    if (BRAND.test(t)) return true;
-    const key = norm(t).replace(/\s+/g, '');
-    return key.length >= 4 && HOST_LABEL.length >= 4 && HOST_LABEL.startsWith(key);
-  };
+  // The site's own name must never stand in for the series name. The rule is structural and lives in
+  // the registry: a logo is a fragment of its own hostname (stonescape's is an h1 split into "STONE"
+  // + "SCAPE"), so this file needs no brand list.
+  const isBrand = (t) => window.__kura.isBrand(t);
   const isLogoHeading = (h) => !!h.closest('a[href="/"]');
   const stripTail = (t) => String(t || '').split(/[|—–]/)[0].replace(/[\s\-–—·]+$/, '').trim();
 
@@ -65,7 +55,7 @@
   function seriesTitle() {
     const og = document.querySelector('meta[property="og:title"]')?.content;
     const heading = seriesHeading();
-    const candidates = [heading ? headingText(heading) : null, og, document.title]
+    const candidates = [heading ? headingText(heading) : null, site.title ? site.title() : null, og, document.title]
       .map(stripTail)
       .filter((t) => t && !isBrand(t));
     return candidates[0] || '';
@@ -201,21 +191,13 @@
     };
   }
 
-  // Where the panel belongs, per site: the section it sits above. Matching that section's box is
-  // what makes it look like part of the page grid rather than a card nested under the synopsis.
-  const ANCHORS = {
-    // insert above the chapter tabs, but take the width of the chapter panel they open: on mangadot
-    // the tab strip itself is narrow and the wrapper spans the whole page
-    // atsu.moe lists chapters thousands of pixels below the synopsis, so the panel belongs under
-    // the synopsis there; an empty rule means "use the series card, do not use the chapter list"
-    'atsu.moe': () => null,
-    'mangadot.net': () => {
-      const tabs = document.querySelector('main [role="tablist"], [role="tablist"]');
-      if (!tabs) return null;
-      const panel = document.querySelector('main [role="tabpanel"], [role="tabpanel"]');
-      const geom = panel && panel.getBoundingClientRect().width > 400 ? panel : tabs;
-      return { before: tabs, geom };
-    },
+  // Where the panel belongs is a site's own answer (src/sites/<site>.js). A definition that returns
+  // null means "no landmark here, place it after the series card"; one with no placement function
+  // gets the generic anchor: the chapter list every reader has.
+  const siteAnchor = () => {
+    if (typeof site.placement === 'function') return site.placement() || null;
+    const list = chaptersLandmark();
+    return list ? { before: list, geom: list } : null;
   };
 
   const STATE_TEXT = { reading: 'Reading', completed: 'Completed', paused: 'Paused', dropped: 'Dropped', planning: 'Plan to read', rereading: 'Re-reading' };
@@ -293,6 +275,8 @@
   }
 
   async function renderNow() {
+    // a challenge page is not a series page, whatever the URL says
+    if (window.__kura.isInterstitial()) { purge(mounted); await note('challenge page, not content'); return; }
     const title = seriesTitle();
     if (!title) { purge(mounted); await note('no series title on this page'); return; }
     let data;
@@ -307,12 +291,7 @@
 
     // synopsis block when the layout is readable, otherwise the end of the content column: a
     // panel that silently fails to appear is worse than one placed a little lower than ideal
-    const host = location.hostname.replace(/^www\./, '');
-    const hasSiteRule = Object.prototype.hasOwnProperty.call(ANCHORS, host);
-    const anchor = hasSiteRule ? (ANCHORS[host]() || null) : (() => {
-      const list = chaptersLandmark();
-      return list ? { before: list, geom: list } : null;
-    })();
+    const anchor = siteAnchor();
     const block = findSynopsisBlock() || fallbackAnchor();
     if (!anchor && (!block || !block.parentElement)) { await note('no place to insert the panel', { title }); return; }
 
