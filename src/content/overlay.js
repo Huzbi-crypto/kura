@@ -399,12 +399,28 @@
     return false;
   }
 
-  /** paged readers announce position: "Page 3 of 3" / "3 / 3 · 100 %" */
+  /**
+   * Paged readers announce their position: "Page 3 of 3", "3 / 3 · 100 %". Anything else that happens
+   * to read "N of M" is not a page counter — atsu.moe renders achievement tiers ("tier 4 of 4"), and
+   * treating that as the last page marked a chapter read on load, before a single page was seen, then
+   * pushed it to every tracker. So the match must be a pager: the word "page", or a bare counter.
+   */
   function pagedAtLastPage() {
-    for (const el of document.querySelectorAll('[aria-label], [class*=page], [class*=progress]')) {
-      const label = `${el.getAttribute('aria-label') || ''} ${el.textContent || ''}`;
-      const m = label.match(/(\d+)\s*(?:of|\/)\s*(\d+)(?:\s*·|\s*%)?/i);
-      if (m && Number(m[1]) >= Number(m[2]) && Number(m[2]) > 0) return true;
+    const RE_PAGE = /\bpage\s*(\d+)\s*(?:of|\/)\s*(\d+)/i;
+    const RE_BARE = /^(\d+)\s*(?:of|\/)\s*(\d+)(?:\s*[·|]\s*\d+\s*%)?$/i;
+    for (const el of document.querySelectorAll('[aria-label], [class*=page], [class*=Page], [class*=progress]')) {
+      if (el.children.length > 2) continue;                 // a pager label is a leaf, or nearly one
+      // the two sources are checked apart: a pager often says "Page 3 of 3, open page selector" in the
+      // aria-label while its text is "3 / 3 · 100 %", and joining them hides both
+      const labels = [
+        (el.getAttribute('aria-label') || '').replace(/\s+/g, ' ').trim(),
+        (el.textContent || '').replace(/\s+/g, ' ').trim(),
+      ];
+      for (const label of labels) {
+        if (!label || label.length > 40) continue;          // badges, menus and summaries are longer
+        const m = label.match(RE_PAGE) || label.match(RE_BARE);
+        if (m && Number(m[1]) >= Number(m[2]) && Number(m[2]) > 0) return true;
+      }
     }
     return false;
   }

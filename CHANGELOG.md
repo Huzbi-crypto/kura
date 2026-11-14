@@ -3,6 +3,24 @@
 All notable changes to Kura. Format: [Keep a Changelog](https://keepachangelog.com/), versioning
 follows [SemVer](https://semver.org/).
 
+## [0.9.10] — unreleased
+
+A chapter marked read before it was opened.
+
+- **Achievement tiers read as a page counter.** The overlay decides "this is the last page" by looking
+  for `N of M` text in pager-ish elements. atsu.moe renders achievement badges ("Genre Explorer, Jack
+  of All Trades, tier 4 of 4"), and `4 of 4` satisfied it, so as soon as that widget was in the DOM the
+  overlay concluded the chapter was finished: the pill jumped to `✓ read` and the completion went to
+  every tracker. Scroll direction never mattered, which is why scrolling up showed it too, and why the
+  percentage looked correct only while the badge widget had not rendered yet.
+- A page counter now has to be one: the word `page` with `N of M`, or a bare `3 / 3` / `3 / 3 · 100 %`
+  counter, in a short element. The aria-label and the text are matched separately, because a real
+  pager reads `Page 3 of 3, open page selector` in the label and `3 / 3 · 100 %` on screen.
+- Harness: an atsu reader fixture carrying those badges (it completed on load before, sends nothing
+  now), while the mangadot paged reader still completes on its real last page.
+- Live on the atsu reader with the real scripts: at the top `pct 0, paged false, nothing completed`;
+  at 50% `pct 50`; at the bottom `pct 98` and one completion.
+
 ## [0.9.9] — unreleased
 
 The pill named the series after a label.
