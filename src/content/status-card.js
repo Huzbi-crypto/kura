@@ -259,6 +259,12 @@
 
   const CARD = 'section[aria-label="Kura progress"]';
   let rendering = false;
+  let rerun = false;
+  let mountedFor = '';      // the title the mounted card represents
+  let mountedAt = 0;        // when it was mounted, for the retry budget
+  let attempts = 0;         // placement attempts on this page
+  let attemptsFor = '';     // which page those attempts belong to
+  let lastNote = '';
 
   /** Exactly one card may exist. Sites move and clone nodes, and a superseded render must never
    *  survive next to the current one, so every mount ends by removing everything but its own node. */
@@ -266,34 +272,46 @@
     for (const el of document.querySelectorAll(CARD)) if (el !== keep) el.remove();
   };
 
-  // single flight: render() awaits the worker and a frame, and a second entry in that window used to
-  // insert a second card that nothing ever removed
+  const clearPanel = () => { purge(null); mounted = null; mountedFor = ''; };
+
+  /** ensure() runs constantly, so a repeated "not in the library" must not flood the activity log */
+  const noteOnce = async (msg, data) => {
+    if (msg === lastNote) return;
+    lastNote = msg;
+    await note(msg, data);
+  };
+
+  // single flight, plus a queued re-run: a second request that is simply dropped is how a panel goes
+  // missing when the page changes while a render is already in flight
   async function render() {
-    if (rendering) return;
+    if (rendering) { rerun = true; return; }
     rendering = true;
-    try { await renderNow(); } finally { rendering = false; }
+    try { await renderNow(); } finally {
+      rendering = false;
+      if (rerun) { rerun = false; setTimeout(ensure, 0); }
+    }
   }
 
   async function renderNow() {
     // a challenge page is not a series page, whatever the URL says
-    if (window.__kura.isInterstitial()) { purge(mounted); await note('challenge page, not content'); return; }
+    if (window.__kura.isInterstitial()) { clearPanel(); await noteOnce('challenge page, not content'); return; }
     const title = seriesTitle();
-    if (!title) { purge(mounted); await note('no series title on this page'); return; }
+    if (!title) { clearPanel(); return; }   // ensure() owns that decision and its log line
     let data;
     try {
       // the worker sleeps often: one retry, and never fail silently
       data = await send({ type: 'status', title }).catch(() => send({ type: 'status', title }));
     } catch (e) {
-      await note(`status lookup failed: ${e.message}`, { title });
+      await noteOnce(`status lookup failed: ${e.message}`, { title });
       return;
     }
-    if (!data?.found) { mounted?.remove(); mounted = null; await note(`not in the library: "${title}"`, { title }); return; }
+    if (!data?.found) { clearPanel(); await noteOnce(`not in the library: "${title}"`, { title }); return; }
 
     // synopsis block when the layout is readable, otherwise the end of the content column: a
     // panel that silently fails to appear is worse than one placed a little lower than ideal
     const anchor = siteAnchor();
     const block = findSynopsisBlock() || fallbackAnchor();
-    if (!anchor && (!block || !block.parentElement)) { await note('no place to insert the panel', { title }); return; }
+    if (!anchor && (!block || !block.parentElement)) { await noteOnce('no place to insert the panel', { title }); return; }
 
     const para = block?.querySelector?.('p') || block;
     // geometry from the section this panel introduces, so it lines up with the content grid
@@ -338,59 +356,64 @@
     }
 
     purge(node);
-    mounted = node;
-    if (!placed) { await note(`panel could not be placed visibly on "${title}"`, { title }); return; }
-    if (lastNoteFor !== title) { lastNoteFor = title; await note(`panel shown for "${title}" (${placed.how})`, { title }); }
-  }
-
-  let last = '';
-  let lastNoteFor = '';
-  let remounts = 0;
-  const nextFrame = () => new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
-
-  function tick() {
-    const key = location.pathname + '|' + seriesTitle();
-    if (key === last) return;
-    last = key;
-    if (isSeriesPage()) render();
-  }
-
-  /**
-   * Chrome's reader sites are SPAs: they mount, then re-render and drop anything they did not
-   * create. Watching for the panel's own removal and putting it back is what MAL-Sync does too;
-   * re-running tick() here was useless because the URL had not changed.
-   *
-   * "Removed" and "hidden" are both failure: a site that sets display:none on our node leaves it
-   * connected and zero-height, so connectivity alone must never count as placed.
-   *
-   * There is no "put it back" path. Re-inserting a node a past render captured is what produced
-   * duplicate panels: the closure held an old node while `mounted` had moved on, so the old card
-   * came back next to the new one. A fresh render is the only repair.
-   */
-  const visible = (n) => !!n && n.isConnected && n.getBoundingClientRect().height > 8;
-
-  function keepMounted() {
-    if (rendering) return;
-    purge(mounted);                       // stray cards from an older render never outlive a tick
-    if (!mounted) return;
-    if (visible(mounted)) { remounts = 0; return; }
-    if (remounts >= 12) {
-      if (remounts === 12) { remounts++; note('the site keeps removing the panel; leaving it off'); }
+    if (!placed) {
+      node.remove();
+      mounted = null;
+      mountedFor = '';
+      await noteOnce(`panel could not be placed visibly on "${title}"`, { title });
       return;
     }
-    remounts++;
+    mounted = node;
+    mountedFor = title;
+    mountedAt = Date.now();
+    await noteOnce(`panel shown for "${title}" (${placed.how})`, { title });
+  }
+
+  const nextFrame = () => new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
+  const visible = (n) => !!n && n.isConnected && n.getBoundingClientRect().height > 8;
+
+  /**
+   * The single entry point. It reads the page as it is right now and decides whether a card is
+   * needed, so it is safe to call as often as we like.
+   *
+   * This replaces three fixed timers (0s, 1.2s, 3s) plus a keep-alive that gave up while nothing was
+   * mounted. Reader sites mount their series heading whenever hydration, an auth check or an
+   * interstitial finishes, so a retry that stops at 3s is a coin flip: a reload that hydrated after
+   * 3s showed no panel at all, and one that hydrated sooner showed it, on the same build and the
+   * same page.
+   */
+  function ensure() {
+    if (!isSeriesPage()) { clearPanel(); return; }
+    if (window.__kura.isInterstitial()) { clearPanel(); noteOnce('challenge page, not content'); return; }
+    const title = seriesTitle();
+    if (!title) { clearPanel(); noteOnce('no series title on this page'); return; }
+    if (mounted && visible(mounted) && mountedFor === title) {
+      // a card that has stayed put for a while resets the budget, so a long session is never
+      // rationed to its first 40 mounts
+      if (Date.now() - mountedAt > 10000) attempts = 0;
+      return;
+    }
+
+    const page = location.pathname;
+    if (page !== attemptsFor) { attemptsFor = page; attempts = 0; }
+    if (attempts >= 40) { noteOnce('the site keeps removing the panel; leaving it off'); return; }
+    attempts++;
     render();
   }
 
   const start = () => {
-    tick();
-    // SPAs render late and swap the whole tree on navigation
-    setTimeout(tick, 1200);
-    setTimeout(tick, 3000);
-    new MutationObserver(() => keepMounted())
-      .observe(document.documentElement, { subtree: true, childList: true });
-    // a site that hides the panel without removing it never fires a mutation on our node
-    setInterval(keepMounted, 1500);
+    ensure();
+    // trailing-edge debounce: these sites mutate constantly, and ensure() is cheap but not free
+    let queued = 0;
+    new MutationObserver(() => {
+      if (queued) return;
+      queued = setTimeout(() => { queued = 0; ensure(); }, 120);
+    }).observe(document.documentElement, { subtree: true, childList: true, characterData: true });
+    // a site can hide the card without mutating anything we watch, and a timer is also what catches a
+    // page whose content arrives after everything else has gone quiet
+    setInterval(ensure, 1200);
+    window.addEventListener('load', ensure);
+    window.addEventListener('popstate', () => { attempts = 0; ensure(); });
   };
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);

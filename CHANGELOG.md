@@ -3,6 +3,27 @@
 All notable changes to Kura. Format: [Keep a Changelog](https://keepachangelog.com/), versioning
 follows [SemVer](https://semver.org/).
 
+## [0.9.8] — unreleased
+
+The panel that appeared on some reloads and not others.
+
+- **Cause: three fixed timers, then silence.** The page was asked for a card at 0s, 1.2s and 3s, and
+  the keep-alive that was supposed to catch everything else returned immediately while nothing was
+  mounted. Reader sites mount their series heading whenever hydration, an auth check or an
+  interstitial finishes, so a reload that hydrated after 3s never got a second look. Same page, same
+  build: one card or none, depending on the race. Reproduced in the harness with a fixture whose
+  heading arrives at 5s, which produced `card: false` while the heading was on the page.
+- **One entry point instead of a schedule.** `ensure()` reads the page as it is right now and decides
+  whether a card is needed; it runs on every DOM change (debounced 120ms), on a 1.2s tick, on `load`
+  and on `popstate`. It compares the mounted card with the title the page currently has, so a late
+  mount, a re-render, an SPA navigation and a site that deletes the card all converge on the same
+  repair.
+- **The retry budget is per page and self-refreshing.** 40 attempts on a page, reset when the path
+  changes, and reset again once a mount has survived 10 seconds, so a long session is never rationed.
+- Verified live by reloading each site three times with the real content scripts: atsu 3/3, mangadot
+  3/3, weebcentral 3/3, no duplicates in any round. stonescape 0/3 with `no series title on this
+  page`, which is correct: that site serves no series content.
+
 ## [0.9.7] — unreleased
 
 One file per reader site, and the wall that a panel was being drawn on.
