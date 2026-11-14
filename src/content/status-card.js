@@ -25,18 +25,35 @@
   const BRAND = /^(stones?scape|mangadot|weeb ?central|atsu(?:\.moe)?|kura)\b/i;
   const stripTail = (t) => String(t || '').split(/[|—–]/)[0].replace(/[\s\-–—·]+$/, '').trim();
 
+  /**
+   * A heading's own text. Series headings habitually carry the native/alternate titles in child
+   * spans ("I Only Want to Beat You" + "Oroji Neonreul Igigo Sipeo 오로지 너를 이기고 싶어"), and
+   * textContent glues them into one string that matches nothing.
+   */
+  function headingText(h) {
+    // the first text-bearing leaf: mangadot nests the title and its alt titles as sibling spans
+    // inside one wrapper, so neither textContent nor the first child is the series name alone
+    const walker = document.createTreeWalker(h, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      const t = stripTail(node.nodeValue || '');
+      if (t.length >= 3) return t;
+    }
+    return stripTail(h.textContent);
+  }
+
   /** the page's series heading: the first non-brand heading in the content column */
   function seriesHeading() {
     const heads = [...document.querySelectorAll('h1, h2')]
       .filter((h) => !h.closest('nav, footer, [role="navigation"]'))
-      .map((h) => ({ h, t: stripTail(h.textContent) }))
+      .map((h) => ({ h, t: headingText(h) }))
       .filter(({ t }) => t.length >= 3 && !BRAND.test(t));
     return (heads.find((c) => c.h.closest('main, article, [role="main"]')) || heads[0])?.h || null;
   }
 
   function seriesTitle() {
     const og = document.querySelector('meta[property="og:title"]')?.content;
-    const candidates = [seriesHeading()?.textContent, og, document.title]
+    const heading = seriesHeading();
+    const candidates = [heading ? headingText(heading) : null, og, document.title]
       .map(stripTail)
       .filter((t) => t && !BRAND.test(t));
     return candidates[0] || '';
@@ -78,15 +95,20 @@
    */
   function chaptersLandmark() {
     const label = /^(chapter list|chapters?|episodes?)\b/i;
-    const hit = [...document.querySelectorAll('h1, h2, h3, h4, [role="tab"], button, a')]
-      .find((e) => label.test((e.textContent || '').trim()) && !e.closest('nav, footer'));
-    if (!hit) return null;
-    // climb to the section that holds the chapter rows, not the label's own header row
-    let el = hit;
-    for (let i = 0; i < 3 && el.parentElement && !/^(MAIN|BODY|ARTICLE|HTML)$/.test(el.parentElement.tagName); i++) {
-      el = el.parentElement;
+    const hits = [...document.querySelectorAll('h1, h2, h3, h4, [role="tab"], button, a')]
+      .filter((e) => label.test((e.textContent || '').trim()) && !e.closest('nav, footer'));
+    // A label alone is not a landmark: "Chapters" also appears in sidebars and detail tables, and
+    // inserting the panel there wedges it into a 250px rail and breaks the page's layout.
+    const minWidth = Math.max(320, Math.min(window.innerWidth * 0.45, 700));
+    for (const hit of hits) {
+      let el = hit;
+      for (let i = 0; i < 4 && el.parentElement && !/^(MAIN|BODY|ARTICLE|HTML)$/.test(el.parentElement.tagName); i++) {
+        el = el.parentElement;
+        const r = el.getBoundingClientRect();
+        if (r.width >= minWidth && r.height > 80) return el;
+      }
     }
-    return el;
+    return null;
   }
 
   /** last resort: the end of the content column, before comments/chapters */
@@ -268,8 +290,11 @@
       themed.offset = Math.max(0, Math.round(g.left - host_.left));
     }
     const node = card(data, themed);
+    const geomEl = anchor?.geom || anchor?.before;
+    const tooNarrow = geomEl && geomEl.getBoundingClientRect().width < Math.max(320, window.innerWidth * 0.3);
+    if (tooNarrow) { await note('landmark too narrow, keeping the previous placement', { title }); }
     if (mounted?.isConnected) mounted.replaceWith(node);
-    else if (anchor?.before?.parentElement) anchor.before.insertAdjacentElement('beforebegin', node);
+    else if (anchor?.before?.parentElement && !tooNarrow) anchor.before.insertAdjacentElement('beforebegin', node);
     else block.insertAdjacentElement('afterend', node);
     mounted = node;
     if (lastNoteFor !== title) { lastNoteFor = title; await note(`panel shown for "${title}"`, { title }); }

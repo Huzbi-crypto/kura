@@ -3,6 +3,24 @@
 All notable changes to Kura. Format: [Keep a Changelog](https://keepachangelog.com/), versioning
 follows [SemVer](https://semver.org/).
 
+## [0.9.5] — unreleased
+
+Two regressions from 0.9.4, both found by the Activity log it added.
+
+- **mangadot asked for the wrong title.** Its `h1` nests the title and its alternate titles as
+  sibling spans inside one wrapper, so the panel requested
+  `"I Only Want to Beat YouOroji Neonreul Igigo Sipeo오로지 너를 이기고 싶어"` — a string that matches
+  nothing. The heading text is now the first text-bearing leaf, giving `I Only Want to Beat You`.
+- **atsu.moe's layout was squashed.** The chapter landmark matched a narrow sidebar link labelled
+  "Chapters", so the panel was inserted into that rail. A landmark must now be a real column
+  (≥45% of the viewport width and taller than 80px), and the panel refuses to insert into anything
+  narrower than a column at all.
+- Verified live on all three: atsu (`I Only Want to Beat You`, below the synopsis, above Chapters,
+  layout intact), stonescape (`942px`, aligned with the chapter list), mangadot (`868px`, aligned
+  with the chapter column, title clean).
+- The harness now asserts the mangadot case end to end: nested alt-title spans must still produce
+  the series title alone.
+
 ## [0.9.4] — unreleased
 
 Why the panel was missing on stonescape and mangadot, with the cause found on the live pages.

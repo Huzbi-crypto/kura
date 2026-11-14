@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Kura — manga tracker",
-  "version": "0.9.4",
+  "version": "0.9.5",
   "description": "Manga-first reading tracker that keeps MyAnimeList, AniList and MangaBaka in step at once.",
   "permissions": ["storage", "alarms", "identity"],
   "host_permissions": [
