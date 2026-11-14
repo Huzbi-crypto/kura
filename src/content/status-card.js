@@ -275,9 +275,26 @@
   let mounted = null;
   const note = (msg, data) => Promise.resolve(send({ type: 'note', kind: 'panel', msg, data })).catch(() => {});
 
+  const CARD = 'section[aria-label="Kura progress"]';
+  let rendering = false;
+
+  /** Exactly one card may exist. Sites move and clone nodes, and a superseded render must never
+   *  survive next to the current one, so every mount ends by removing everything but its own node. */
+  const purge = (keep) => {
+    for (const el of document.querySelectorAll(CARD)) if (el !== keep) el.remove();
+  };
+
+  // single flight: render() awaits the worker and a frame, and a second entry in that window used to
+  // insert a second card that nothing ever removed
   async function render() {
+    if (rendering) return;
+    rendering = true;
+    try { await renderNow(); } finally { rendering = false; }
+  }
+
+  async function renderNow() {
     const title = seriesTitle();
-    if (!title) { note('no series title on this page'); return; }
+    if (!title) { purge(mounted); await note('no series title on this page'); return; }
     let data;
     try {
       // the worker sleeps often: one retry, and never fail silently
@@ -335,23 +352,20 @@
 
     let placed = null;
     for (const spot of spots) {
-      if (mounted?.isConnected && mounted !== node) mounted.remove();
       try { spot.run(); } catch { continue; }
       await nextFrame();
       const box = node.getBoundingClientRect();
       if (node.isConnected && box.height > 8 && box.width > 120 && afterSynopsis(node)) { placed = spot; break; }
     }
 
+    purge(node);
     mounted = node;
-    // remember how it got there, so it can be put back when the site re-renders
-    reinsert = placed ? placed.run : null;
     if (!placed) { await note(`panel could not be placed visibly on "${title}"`, { title }); return; }
     if (lastNoteFor !== title) { lastNoteFor = title; await note(`panel shown for "${title}" (${placed.how})`, { title }); }
   }
 
   let last = '';
   let lastNoteFor = '';
-  let reinsert = null;      // how the panel was placed, so it can be put back
   let remounts = 0;
   const nextFrame = () => new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
 
@@ -368,12 +382,17 @@
    * re-running tick() here was useless because the URL had not changed.
    *
    * "Removed" and "hidden" are both failure: a site that sets display:none on our node leaves it
-   * connected and zero-height, so connectivity alone must never count as placed, and putting the
-   * same hidden node back changes nothing. Only a fresh render does.
+   * connected and zero-height, so connectivity alone must never count as placed.
+   *
+   * There is no "put it back" path. Re-inserting a node a past render captured is what produced
+   * duplicate panels: the closure held an old node while `mounted` had moved on, so the old card
+   * came back next to the new one. A fresh render is the only repair.
    */
   const visible = (n) => !!n && n.isConnected && n.getBoundingClientRect().height > 8;
 
   function keepMounted() {
+    if (rendering) return;
+    purge(mounted);                       // stray cards from an older render never outlive a tick
     if (!mounted) return;
     if (visible(mounted)) { remounts = 0; return; }
     if (remounts >= 12) {
@@ -381,7 +400,6 @@
       return;
     }
     remounts++;
-    if (reinsert) { try { reinsert(); } catch { /* fall through */ } if (visible(mounted)) return; }
     render();
   }
 

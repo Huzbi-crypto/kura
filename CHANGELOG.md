@@ -3,6 +3,20 @@
 All notable changes to Kura. Format: [Keep a Changelog](https://keepachangelog.com/), versioning
 follows [SemVer](https://semver.org/).
 
+## [0.9.6] — unreleased
+
+Duplicate progress cards, and the version number that did not move.
+
+- **One card, ever.** Re-inserting a node captured by an earlier render is what produced several
+  identical panels stacked down the page: the closure held an old node while `mounted` had moved on,
+  so the old card returned beside the new one. There is no "put it back" path any more; a fresh
+  render is the only repair, every mount ends by removing every other card, and renders are single
+  flight so two overlapping ones cannot both insert. Measured under a mutation flood: 12 cards
+  before, 1 after.
+- **Reading the version is how the version gets bumped.** 0.9.5 shipped two behaviour changes without
+  a new number. Every behaviour change bumps `manifest.json`, which is the single source: the popup
+  header, the Activity log stamp and the diagnostics all read it from there.
+
 ## [0.9.5] — unreleased
 
 Two regressions from 0.9.4, both found by the Activity log it added.
