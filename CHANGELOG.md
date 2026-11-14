@@ -3,6 +3,20 @@
 All notable changes to Kura. Format: [Keep a Changelog](https://keepachangelog.com/), versioning
 follows [SemVer](https://semver.org/).
 
+## [0.9.14] — unreleased
+
+A site can say where its description is.
+
+- **New per-site hook: `synopsis()`.** The shared finder climbs from the description paragraph to a
+  container it believes is the series card, and on a site whose container also holds other blocks
+  that climb is what decides the panel's position. A site definition can now answer the question
+  itself; atsu returns the longest leaf block in the content column.
+- Measured on ten real atsu series pages at 2048px: everywhere the panel sits 16px under the
+  description. The change did not move the card on any of them; it removes the accident that it
+  happened to be right, and gives atsu's layout an explicit answer.
+- Note: if the panel is ever placed below the chapter list, the Activity line names the spot that was
+  used, and `end of the content column` means the description was not found at all.
+
 ## [0.9.13] — unreleased
 
 A chapter counted by mistake can be put back.

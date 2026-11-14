@@ -310,7 +310,9 @@
     // synopsis block when the layout is readable, otherwise the end of the content column: a
     // panel that silently fails to appear is worse than one placed a little lower than ideal
     const anchor = siteAnchor();
-    const block = findSynopsisBlock() || fallbackAnchor();
+    // a site may answer "where is the description" itself: the shared finder climbs to a container,
+    // and on atsu that container also holds the first chapter rows
+    const block = (typeof site.synopsis === 'function' && site.synopsis()) || findSynopsisBlock() || fallbackAnchor();
     if (!anchor && (!block || !block.parentElement)) { await noteOnce('no place to insert the panel', { title }); return; }
 
     const para = block?.querySelector?.('p') || block;
