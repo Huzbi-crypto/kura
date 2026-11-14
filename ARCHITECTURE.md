@@ -118,6 +118,10 @@ whoever is working on the extension, not part of the shipped product.
   page (no card at all).
 - `tools/test-match.mjs` — title normalisation, similarity, ambiguity refusal, using real API data.
 - `tools/test-bridge.mjs` — the MangaBaka `/source/` response shape.
+- `tools/site-audit.mjs` — the per-site entry point, one site at a time: drives that site's real
+  series and chapter pages with the real content scripts and reports pass/fail per behaviour. See
+  `docs/SITES.md` for the workflow, the status table, and what each site does differently. Exit 3
+  means the site served no series content today, which is not a code failure.
 - Both browser harnesses load their scripts through `contentSource()` in `tools/_browser.mjs`, which
   reads the list out of `manifest.json`, so a test can never run a different file set than the build.
 - Browser harnesses are opt-in (`KURA_BROWSER_TESTS=1`) because each headless run can leave a stale

@@ -39,6 +39,7 @@ tools/debug-*.mjs
 tools/test-*.mjs
 tools/sw-errors.mjs
 tools/verify-extension.mjs
+tools/site-audit.mjs
 tools/load-check.mjs
 tools/detect-test.js
 

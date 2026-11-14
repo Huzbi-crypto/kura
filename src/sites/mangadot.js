@@ -17,4 +17,5 @@ window.__kura.site({
     const geom = panel && panel.getBoundingClientRect().width > 400 ? panel : tabs;
     return { before: tabs, geom };
   },
+  expect: 'aboveChapterList',
 });

@@ -14,4 +14,6 @@ window.__kura.site({
   // panel to it drops the card far out of view. Return null: no landmark, and the series card that
   // holds the heading and the synopsis becomes the placement.
   placement: () => null,
+  // what the per-site audit should verify here, so no shared check has to guess
+  expect: 'afterSynopsis',
 });
