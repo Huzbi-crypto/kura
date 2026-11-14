@@ -263,8 +263,10 @@
 
   let current = null;
   let hideTimer = null;
-  let completedFor = null;
+  let completedKey = null;   // `${title}|${chapter}` that was completed, stable across re-renders
   let userScrolled = false;
+  let lastPath = location.pathname;
+  const keyOf = (d) => `${d.title}|${d.chapter}`;
   let lastPct = 'init';
   const IDLE_AFTER = 6000;
 
@@ -343,9 +345,10 @@
       reveal(9000);
       return;
     }
+    // only a real navigation resets the scroll evidence: a re-render makes detect() briefly return a
+    // different title, and clearing the flags on that let a completed chapter complete again
+    if (lastPath !== location.pathname) { lastPath = location.pathname; userScrolled = false; }
     current = key;
-    completedFor = null;
-    userScrolled = false;
 
     if (d.chapter == null) {
       // no chapter in the URL or title: ask once instead of doing nothing
@@ -375,9 +378,9 @@
   async function finishChapter() {
     const d = detect();
     // chapter 0 is a real chapter: compare against null, never falsiness
-    if (!d.title || d.chapter == null || completedFor === d.chapter || completing) return;
+    if (!d.title || d.chapter == null || completedKey === keyOf(d) || completing) return;
     completing = true;
-    completedFor = d.chapter;
+    completedKey = keyOf(d);
     paintProgress(100, true);
     const r = await send('reading', { ...d, completed: true });
     completing = false;
@@ -425,15 +428,16 @@
     return false;
   }
 
-  /** is the end of the chapter actually on screen? (readers often put a footer below the pages) */
-  function chapterEndVisible() {
+  /**
+   * The reader is at the end of what it holds. A percentage is not evidence: 95% of a long chapter is
+   * still the middle of it, and any percentage rule marks chapters read that were only started.
+   */
+  function atScrollEnd(slack = 250) {
     const el = scroller();
-    if (!el || el.scrollHeight - el.clientHeight <= 200) return false;
-    const pics = [...document.querySelectorAll('img')].filter((i) => i.getBoundingClientRect().width > 180);
-    if (!pics.length) return false;
-    const last = pics[pics.length - 1].getBoundingClientRect();
-    const vh = window.innerHeight || document.documentElement.clientHeight;
-    return last.bottom > 0 && last.bottom <= vh + 60;
+    if (!el) return false;
+    const max = el.scrollHeight - el.clientHeight;
+    if (max <= 8) return false;
+    return max - el.scrollTop <= slack;
   }
 
   /** scroll position inside the chapter, plus the "finished this chapter" signal */
@@ -455,18 +459,17 @@
       if (pct != null && pct > 0) userScrolled = true; // real evidence of scrolling, not a guess
       if (pct !== lastPct) {
         lastPct = pct;
-        paintProgress(pct, completedFor === d.chapter);
+        paintProgress(pct, completedKey === keyOf(d));
       }
-      // scrolled to the bottom, the last page's end on screen, an explicit end marker, or the
-      // paged reader telling us this is the final page — the last three need no scrolling at all,
-      // which is what makes paged readers work
-      const bottom = chapterEndVisible();
+      // A chapter is finished only on evidence that you reached the end of it: an explicit end
+      // marker, a pager sitting on its last page, or the reader scrolled to the bottom of what it
+      // holds after you actually scrolled. Scrolling far is not the same as finishing: the old
+      // `pct >= 95` rule marked chapters read while you were still in the middle of them.
       const marker = endMarkerVisible();
       const paged = pagedAtLastPage();
-      lastSeen = { pct, bottom, marker, paged, chapter: d.chapter };
-      const explicitEnd = bottom || marker || paged;
-      const scrolledEnd = pct != null && pct >= 95;
-      if (explicitEnd || (userScrolled && scrolledEnd)) await finishChapter();
+      const atEnd = userScrolled && atScrollEnd();
+      lastSeen = { pct, atEnd, marker, paged, chapter: d.chapter };
+      if (marker || paged || atEnd) await finishChapter();
       } catch (e) { lastError = String((e && e.message) || e); }
     })();
   }
@@ -495,8 +498,8 @@
 
   // exposed for the test harness and for debugging a reader layout in the field
   window.__kuraDebug = {
-    detect, readPercent, chapterEndVisible, endMarkerVisible, pagedAtLastPage,
-    state: () => ({ current, completedFor, userScrolled, lastRun, runs, lastError, completing, lastSeen }),
+    detect, readPercent, atScrollEnd, endMarkerVisible, pagedAtLastPage,
+    state: () => ({ current, completedKey, userScrolled, lastRun, runs, lastError, completing, lastSeen }),
   };
 
   function mount() {

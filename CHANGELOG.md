@@ -3,6 +3,24 @@
 All notable changes to Kura. Format: [Keep a Changelog](https://keepachangelog.com/), versioning
 follows [SemVer](https://semver.org/).
 
+## [0.9.11] — unreleased
+
+A chapter that was only started can no longer be marked read.
+
+- **The percentage rule is gone.** `pct >= 95` finished a chapter, and 95% of a long chapter is still
+  the middle of it. A chapter now finishes only on evidence that you reached the end: an explicit
+  end-of-chapter marker, a pager sitting on its last page, or the reader scrolled to the bottom of
+  what it holds after you actually scrolled. Seeing the last page is not enough on its own, because
+  a site that has not laid out its remaining images looks exactly the same.
+- **Completion survives a re-render.** It was remembered as a chapter number and cleared on every
+  `report()`; a re-render makes detection briefly return a different title, so a chapter already
+  completed could be completed again and the pill could drop back to a percentage. It is now a
+  `title|chapter` key, and only a real path change clears the scroll evidence.
+- Harness: `started is not finished` asserts no completion at 55%, 80% and 93% and exactly one at the
+  real end; `footer below the pages` asserts that the last page on screen is not the end when content
+  follows. Live on the atsu reader: no completion at 10/25/40/55/70/85/93/97%, one at the bottom, and
+  nothing further on the way back up.
+
 ## [0.9.10] — unreleased
 
 A chapter marked read before it was opened.
