@@ -3,6 +3,33 @@
 All notable changes to Kura. Format: [Keep a Changelog](https://keepachangelog.com/), versioning
 follows [SemVer](https://semver.org/).
 
+## [0.9.19] — unreleased
+
+The panel is no longer driven by page activity.
+
+- **Settle, render once, verify once.** Mutations, `DOMContentLoaded` and `load` now feed a single
+  600ms debounce; only a quiet page whose title resolves renders. A mounted card is never re-rendered
+  because the page moved. Measured on `/manga/O43t` with the real extension: **1 insertion per load,
+  0 removals** (it was 4–6 insertions per load, and the resting position varied between y=422 and
+  y=670 between runs).
+- **Real loss is still repaired.** A 3s watchdog re-renders only when the card is disconnected, hidden,
+  re-parented, or the title/pathname changed, bounded at three consecutive repairs; the note carries
+  the removal count when the budget runs out. Removing the card by hand in Edge: back in under a
+  second, still in place eight seconds later.
+- **One verification, not a loop.** 800ms after mounting the card is checked once — visible, above the
+  chapter list, and beside the description on a site that declares `expect: 'beforeSynopsis'` — and
+  may be corrected once.
+- **atsu's description must be prose.** Fifteen words or more, with a period and a comma, never inside
+  the chapter list, never at or under its first row; a block that cannot be verified returns null so
+  the panel falls back instead of anchoring wrongly. `chapterList()` answers with the container that
+  holds the most chapter rows.
+- **The spot loop no longer double-guesses.** It accepts a visible box that follows the series
+  heading; the "below the chapter list" rule belongs to the single verification, where it has a
+  description to compare against. Keeping it in both places rejected valid cards on sites whose list
+  container starts above the panel.
+- The per-site audit gained real-page repair checks (remove the card, then move it to the page end).
+  Baseline: atsu 20/20, mangadot 19/19, weebcentral 19/19, stonescape skipped.
+
 ## [0.9.18] — unreleased
 
 On atsu the panel sits between the metadata table and the description.

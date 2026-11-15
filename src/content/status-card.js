@@ -267,13 +267,26 @@
   const note = (msg, data) => Promise.resolve(send({ type: 'note', kind: 'panel', msg, data })).catch(() => {});
 
   const CARD = 'section[aria-label="Kura progress"]';
+  // settle → render once → verify once → watch for real loss. Page activity must never re-render a
+  // mounted card, so each timer has one job and a bound.
+  const SETTLE_MS = 600;    // quiet the page must hold before the first render
+  const VERIFY_MS = 800;    // the one post-mount geometry check
+  const WATCH_MS = 3000;    // how long loss detection may take
+  const MAX_TRIES = 5;      // failed mount attempts before the page is left alone
+  const MAX_REPAIRS = 3;    // consecutive watchdog repairs before giving up
   let rendering = false;
   let rerun = false;
-  let mountedFor = '';      // the title the mounted card represents
-  let mountedAt = 0;        // when it was mounted, for the retry budget
-  let corrections = 0;      // how many times the card was moved because it landed wrong
-  let attempts = 0;         // placement attempts on this page
-  let attemptsFor = '';     // which page those attempts belong to
+  let watchedTitle = '';    // the document title the card was mounted under
+  let placedParent = null;  // where the card was inserted; the site moving it is a loss
+  let path = '';            // the pathname this page's state belongs to
+  let quiet = 0;            // the settle debounce
+  let verifyAt = 0;         // the one-shot verification
+  let verified = false;     // the verification has been spent
+  let corrections = 0;      // the single correction it may make
+  let tries = 0;            // failed mount attempts on this page
+  let repairs = 0;          // consecutive watchdog repairs
+  let removals = 0;         // times the site took the mounted card out of its place
+  let gaveUp = false;       // the repair budget is spent for this page
   let lastNote = '';
 
   /** Exactly one card may exist. Sites move and clone nodes, and a superseded render must never
@@ -282,9 +295,9 @@
     for (const el of document.querySelectorAll(CARD)) if (el !== keep) el.remove();
   };
 
-  const clearPanel = () => { purge(null); mounted = null; mountedFor = ''; };
+  const clearPanel = () => { purge(null); mounted = null; };
 
-  /** ensure() runs constantly, so a repeated "not in the library" must not flood the activity log */
+  /** the page can settle many times before a card sticks: one log line per outcome, not per try */
   const noteOnce = async (msg, data) => {
     if (msg === lastNote) return;
     lastNote = msg;
@@ -298,7 +311,7 @@
     rendering = true;
     try { await renderNow(); } finally {
       rendering = false;
-      if (rerun) { rerun = false; setTimeout(ensure, 0); }
+      if (rerun) { rerun = false; setTimeout(settle, 0); }
     }
   }
 
@@ -306,13 +319,17 @@
     // a challenge page is not a series page, whatever the URL says
     if (window.__kura.isInterstitial()) { clearPanel(); await noteOnce('challenge page, not content'); return; }
     const title = seriesTitle();
-    if (!title) { clearPanel(); return; }   // ensure() owns that decision and its log line
+    // a title can vanish between the settle and here (an SPA swap); nothing renders without one,
+    // and settle() owns the log line for that case
+    if (!title) { clearPanel(); return; }
     let data;
     try {
       // the worker sleeps often: one retry, and never fail silently
       data = await send({ type: 'status', title }).catch(() => send({ type: 'status', title }));
     } catch (e) {
+      tries++;
       await noteOnce(`status lookup failed: ${e.message}`, { title });
+      scheduleSettle();   // a quiet page produces no mutations of its own to retry on
       return;
     }
     if (!data?.found) { clearPanel(); await noteOnce(`not in the library: "${title}"`, { title }); return; }
@@ -323,7 +340,12 @@
     // a site may answer "where is the description" itself: the shared finder climbs to a container,
     // and on atsu that container also holds the first chapter rows
     const block = (typeof site.synopsis === 'function' && site.synopsis()) || findSynopsisBlock() || fallbackAnchor();
-    if (!anchor && (!block || !block.parentElement)) { await noteOnce('no place to insert the panel', { title }); return; }
+    if (!anchor && (!block || !block.parentElement)) {
+      tries++;
+      await noteOnce('no place to insert the panel', { title });
+      scheduleSettle();
+      return;
+    }
 
     const para = block?.querySelector?.('p') || block;
     // geometry from the section this panel introduces, so it lines up with the content grid
@@ -370,6 +392,8 @@
       try { spot.run(); } catch { continue; }
       await nextFrame();
       const box = node.getBoundingClientRect();
+      // A panel below the chapter list is never correct, and the one verification catches it via
+      // misplaced(); the spot loop only needs a visible box that follows the series heading.
       if (node.isConnected && box.height > 8 && box.width > 120 && afterSynopsis(node)) { placed = spot; break; }
     }
 
@@ -377,35 +401,24 @@
     if (!placed) {
       node.remove();
       mounted = null;
-      mountedFor = '';
+      tries++;
       await noteOnce(`panel could not be placed visibly on "${title}"`, { title });
+      scheduleSettle();
       return;
     }
     mounted = node;
-    mountedFor = title;
-    mountedAt = Date.now();
+    watchedTitle = document.title;
+    placedParent = node.parentElement;
+    tries = 0;
+    // the one verification per page-load; the correction it may make does not schedule another
+    if (!verified) { verified = true; verifyAt = setTimeout(verifyOnce, VERIFY_MS); }
     await noteOnce(`panel shown for "${title}" (${placed.how})`, { title });
   }
 
   const nextFrame = () => new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
   const visible = (n) => !!n && n.isConnected && n.getBoundingClientRect().height > 8;
 
-  /**
-   * The single entry point. It reads the page as it is right now and decides whether a card is
-   * needed, so it is safe to call as often as we like.
-   *
-   * This replaces three fixed timers (0s, 1.2s, 3s) plus a keep-alive that gave up while nothing was
-   * mounted. Reader sites mount their series heading whenever hydration, an auth check or an
-   * interstitial finishes, so a retry that stops at 3s is a coin flip: a reload that hydrated after
-   * 3s showed no panel at all, and one that hydrated sooner showed it, on the same build and the
-   * same page.
-   */
-  /**
-   * Is the card where it belongs? A visible card for the right series is not enough: the DOM can
-   * change under it (a description that renders late, a site re-layout) and leave a mounted card
-   * below the chapter list, which reads as broken. If a description exists and the card is below the
-   * chapter list, it is misplaced and gets re-rendered.
-   */
+  /** Below the end of the chapter list is wrong on any site; only the one verification asks this. */
   function misplaced() {
     if (!mounted || !mounted.isConnected) return false;
     const list = siteList();
@@ -417,41 +430,113 @@
     return mounted.getBoundingClientRect().top > box.bottom - 8;
   }
 
-  function ensure() {
-    if (!isSeriesPage()) { clearPanel(); return; }
-    if (window.__kura.isInterstitial()) { clearPanel(); noteOnce('challenge page, not content'); return; }
-    const title = seriesTitle();
-    if (!title) { clearPanel(); noteOnce('no series title on this page'); return; }
-    if (mounted && visible(mounted) && mountedFor === title) {
-      // the page can settle after the first mount; a card that ended up below the chapter list is
-      // moved back rather than left there
-      if (misplaced() && corrections < 3) { corrections += 1; render(); return; }
-      // a card that has stayed put for a while resets both budgets, so a long session is never
-      // rationed to its first 40 mounts or its first 3 corrections
-      if (Date.now() - mountedAt > 10000) { attempts = 0; corrections = 0; }
-      return;
+  /**
+   * The one post-mount check, VERIFY_MS after the card lands: a visible box, above the chapter list,
+   * and — where the site declares it — right above its description. It runs once and may correct
+   * once; a check that re-arms itself is the loop this lifecycle exists to remove.
+   */
+  function verifyOnce() {
+    if (!mounted || !mounted.isConnected) return;   // gone is the watchdog's business
+    if (corrections) return;
+    const desc = site.expect === 'beforeSynopsis' && typeof site.synopsis === 'function' ? site.synopsis() : null;
+    let beside = true;
+    if (desc) {
+      const box = mounted.getBoundingClientRect();
+      const d = desc.getBoundingClientRect();
+      const gap = d.top - box.bottom;
+      beside = (mounted.compareDocumentPosition(desc) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0
+        && gap >= -8 && gap <= 140;
     }
-
-    const page = location.pathname;
-    if (page !== attemptsFor) { attemptsFor = page; attempts = 0; }
-    if (attempts >= 40) { noteOnce('the site keeps removing the panel; leaving it off'); return; }
-    attempts++;
+    if (visible(mounted) && !misplaced() && beside) return;
+    corrections = 1;
     render();
   }
 
+  /**
+   * The settle point: the only place that decides a page needs a card. Mutations, DOMContentLoaded
+   * and load all funnel through the same debounce, so nothing renders while the page still moves —
+   * reader sites re-render their tree for seconds after load, and that is what flickered the panel.
+   */
+  function settle() {
+    if (mounted) return;                 // one card per page; the settling phase is over
+    if (gaveUp) return;                  // the repair budget is spent for this page
+    if (document.readyState === 'loading') return;   // DOMContentLoaded re-arms the debounce
+    if (!isSeriesPage()) { clearPanel(); return; }
+    if (window.__kura.isInterstitial()) { clearPanel(); noteOnce('challenge page, not content'); return; }
+    if (!seriesTitle()) { clearPanel(); noteOnce('no series title on this page'); return; }
+    if (tries >= MAX_TRIES) { noteOnce('the panel could not be placed on this page; leaving it off'); return; }
+    render();
+  }
+
+  // every quiet-period path funnels through this trailing-edge debounce
+  const scheduleSettle = () => {
+    if (mounted) return;
+    clearTimeout(quiet);
+    quiet = setTimeout(settle, SETTLE_MS);
+  };
+
+  const onMutations = (records) => {
+    if (mounted) {
+      // a mounted card is never re-rendered because the page moved; what the page did to it is
+      // counted instead, so the activity log can tell the truth about churn
+      for (const r of records) for (const n of r.removedNodes) {
+        if (n === mounted || (n.nodeType === 1 && n.contains(mounted))) removals++;
+      }
+      routeReset();   // only a real pathname change resets; the guard is inside
+      return;
+    }
+    scheduleSettle();
+  };
+
+  /** Repairs in a row mean the site wants the panel gone: say so once, with the churn, and stop. */
+  function repair() {
+    if (gaveUp) return;
+    if (repairs >= MAX_REPAIRS) {
+      gaveUp = true;
+      clearPanel();
+      note(`the site keeps taking the panel off (${removals} removals); leaving it off`);
+      return;
+    }
+    repairs++;
+    render();
+  }
+
+  /** The card is placed; this notices only real loss — gone, hidden, moved by the site, or a new route. */
+  function watch() {
+    if (!mounted) return;
+    if (location.pathname !== path) { routeReset(); return; }
+    // hidden counts as lost: a node the site set display:none on is not a panel the reader can use,
+    // and one height check every 3s costs nothing
+    if (document.title !== watchedTitle || !mounted.isConnected || mounted.parentElement !== placedParent || !visible(mounted)) {
+      repair();
+      return;
+    }
+    repairs = 0;
+  }
+
+  /** A new pathname is a new page: drop everything and settle again. */
+  const routeReset = () => {
+    if (location.pathname === path) return;   // hash and history noise
+    clearTimeout(quiet);
+    clearTimeout(verifyAt);
+    clearPanel();
+    path = location.pathname;
+    watchedTitle = '';
+    placedParent = null;
+    tries = repairs = removals = corrections = 0;
+    verified = gaveUp = false;
+    lastNote = '';
+    scheduleSettle();
+  };
+
   const start = () => {
-    ensure();
-    // trailing-edge debounce: these sites mutate constantly, and ensure() is cheap but not free
-    let queued = 0;
-    new MutationObserver(() => {
-      if (queued) return;
-      queued = setTimeout(() => { queued = 0; ensure(); }, 120);
-    }).observe(document.documentElement, { subtree: true, childList: true, characterData: true });
-    // a site can hide the card without mutating anything we watch, and a timer is also what catches a
-    // page whose content arrives after everything else has gone quiet
-    setInterval(ensure, 1200);
-    window.addEventListener('load', ensure);
-    window.addEventListener('popstate', () => { attempts = 0; ensure(); });
+    path = location.pathname;
+    new MutationObserver(onMutations).observe(document.documentElement, { subtree: true, childList: true, characterData: true });
+    setInterval(watch, WATCH_MS);   // the only timer that may re-render, and only on loss
+    document.addEventListener('DOMContentLoaded', scheduleSettle, { once: true });
+    window.addEventListener('load', scheduleSettle, { once: true });
+    window.addEventListener('popstate', routeReset);
+    scheduleSettle();
   };
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);

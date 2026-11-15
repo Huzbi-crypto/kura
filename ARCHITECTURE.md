@@ -107,10 +107,14 @@ A site may also answer two questions about placement, both optional:
 
 The panel's spot list is ordered: the site's anchor, then after the description, then above the
 chapter list, then the end of the content column. Every spot is checked for a real visible box before
-it is accepted. After mounting, `ensure()` re-checks the card against the chapter list every 1.2s: a
-card that starts below the end of that list is misplaced and is re-rendered, at most three times in a
-row, with the budget resetting once the card stays put for ten seconds. This is the guard that keeps
-a late layout change from leaving the panel at the page bottom.
+it is accepted. Mounting is settle-then-render-once: mutations, DOMContentLoaded and load feed one
+600ms debounce, and only a quiet page whose title resolves renders — page activity never re-renders a
+mounted card. 800ms after the card lands it is verified once (visible, above the chapter list, and
+beside the description where the site declares `expect: 'beforeSynopsis'`), and may be corrected once.
+After that a 3s watchdog re-renders only on real loss — the card no longer connected to the document,
+moved by the site, or the document title/pathname changing (an SPA route) — bounded at three
+consecutive repairs, with a note carrying the removal count when the budget runs out. A new pathname
+resets the state, clears the card and settles again.
 
 ## Non-content guards
 
