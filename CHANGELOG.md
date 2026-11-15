@@ -3,6 +3,22 @@
 All notable changes to Kura. Format: [Keep a Changelog](https://keepachangelog.com/), versioning
 follows [SemVer](https://semver.org/).
 
+## [0.9.18] — unreleased
+
+On atsu the panel sits between the metadata table and the description.
+
+- **The panel goes before the description on atsu, not after it.** Its `placement()` now returns the
+  description block as a `before` anchor with the label `between the metadata and the description`, so
+  the card lands under the type/status/year/author table and above the blurb. Verified on `/manga/O43t`
+  and `/manga/jqb3X` at 1440px: card at 422 with the description at 534 (12px gap), and 599 with 711.
+- **atsu's description finder no longer requires a bare text node.** A description wrapped in inline
+  tags (The Boxer's is) was invisible to it, and the shared finder took over. It now allows inline
+  children, requires prose (40+ characters and at least 8 spaces, which rules out tag chips), prefers a
+  `<p>` over a `div`, and only considers blocks above the chapter list.
+- A site anchor can carry a `label`, and the activity log prints it instead of the generic spot name.
+- `expect` on atsu is now `beforeSynopsis`; the audit checks that the card sits above the description
+  with a small gap, at both widths. atsu: 18/18.
+
 ## [0.9.17] — unreleased
 
 The panel now checks where it actually is, and moves back when it is at the page end.

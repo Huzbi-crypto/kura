@@ -100,6 +100,10 @@ A site may also answer two questions about placement, both optional:
   the chapters when no description can be found, and to notice that a mounted card has sunk to the
   end of the page. atsu's own answer wins over the shared "Chapters" heading match, which that site
   does not always render.
+- `placement()` — the anchor itself, when the site knows a better one than the shared finder. It
+  returns `{ before, geom }` and may carry a `label`, which the activity log prints instead of the
+  generic spot name. atsu uses it to put the panel *before* its description, between the metadata
+  table and the blurb.
 
 The panel's spot list is ordered: the site's anchor, then after the description, then above the
 chapter list, then the end of the content column. Every spot is checked for a real visible box before

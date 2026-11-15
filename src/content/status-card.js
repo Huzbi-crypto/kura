@@ -352,7 +352,7 @@
       || (heading.compareDocumentPosition(n) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
     const spots = [];
     if (anchor?.before?.parentElement && !tooNarrow) {
-      spots.push({ how: 'above the chapter list', run: () => anchor.before.insertAdjacentElement('beforebegin', node) });
+      spots.push({ how: anchor.label || 'above the chapter list', run: () => anchor.before.insertAdjacentElement('beforebegin', node) });
     }
     if (block?.parentElement) {
       spots.push({ how: 'after the series card', run: () => block.insertAdjacentElement('afterend', node) });
