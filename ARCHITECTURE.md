@@ -91,6 +91,23 @@ name (a brand is a fragment of its own hostname, so "STONE" from stonescape's sp
 rejected), and what counts as a bot wall. Cross-site lists are kept there rather than in either
 content script, so the panel and the pill cannot disagree.
 
+A site may also answer two questions about placement, both optional:
+
+- `synopsis()` — the block holding the series description, used as the anchor. It must return a
+  *rendered* element: at narrow widths atsu keeps a hidden copy of the description in the DOM, and
+  anchoring to it dropped the panel into a `display:none` subtree.
+- `chapterList()` — the container holding the chapter rows. The panel uses it to place itself above
+  the chapters when no description can be found, and to notice that a mounted card has sunk to the
+  end of the page. atsu's own answer wins over the shared "Chapters" heading match, which that site
+  does not always render.
+
+The panel's spot list is ordered: the site's anchor, then after the description, then above the
+chapter list, then the end of the content column. Every spot is checked for a real visible box before
+it is accepted. After mounting, `ensure()` re-checks the card against the chapter list every 1.2s: a
+card that starts below the end of that list is misplaced and is re-rendered, at most three times in a
+row, with the budget resetting once the card stays put for ten seconds. This is the guard that keeps
+a late layout change from leaving the panel at the page bottom.
+
 ## Non-content guards
 
 Bot walls must never become library entries, and must never be drawn on either. The shared

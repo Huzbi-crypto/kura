@@ -3,21 +3,42 @@
 All notable changes to Kura. Format: [Keep a Changelog](https://keepachangelog.com/), versioning
 follows [SemVer](https://semver.org/).
 
+## [0.9.17] — unreleased
+
+The panel now checks where it actually is, and moves back when it is at the page end.
+
+- **A mounted card is re-checked against the chapter list.** `ensure()` used to accept any visible card
+  showing the right title as done. A card that ends up below the end of the chapter list is now treated
+  as misplaced and re-rendered, at most three times in a row, with the budget resetting once the card
+  has stayed put for ten seconds. Moving the card to `body`'s end on `/manga/O43t` puts it back under
+  the description in about 600ms, at the cost of one extra status lookup.
+- **`chapterList()` for atsu, corrected twice.** It returns the container holding the most chapter rows
+  rather than the first "Chapter N" match, which was the sidebar's open-chapter button at the top of
+  the page — that made the card look misplaced on arrival. It also knows the `Ch.` and `Episode` row
+  prefixes, and caches its answer for 3s because `ensure()` asks every 1.2s.
+- **atsu's description floor is 40 characters, not 80.** Series with a short synopsis were falling
+  through to the chapter-list fallback.
+- **The audit covers placement at two widths and self-correction.** The narrow pass reads the site's
+  own `expect` (a gap under the description for `afterSynopsis`, above the chapter list otherwise) and
+  fails if the placement fell through to the page end. A new pass moves the mounted card to the page
+  end and requires it to come back above the chapter list with exactly one card left.
+- Baseline: atsu 18/18, mangadot 18/18, weebcentral 18/18, stonescape skipped (serves no series
+  content).
+
 ## [0.9.16] — unreleased
 
 The panel no longer falls to the end of the page at all.
 
-- **The logged-in (Premium) layout has no description where the anonymous one does.** With nothing
-  found, the panel walked its spot list to the last resort, `end of the content column`, which is the
-  bottom of the page, left-aligned and below the whole chapter list.
 - **A chapter list is now tried before the page end.** When no description can be found, the panel is
   inserted above the chapters instead of after everything. Sites can also answer where their chapter
-  rows are (`chapterList()`), which atsu now does: it finds the first `Chapter N` row and climbs to the
-  container holding the list. The shared word-match for a "Chapters" heading was not reliable in that
-  layout.
-- Verified with the description hidden behind `display:none` to imitate the layout we cannot log into:
-  the card lands at 422, above the first chapter row at 503, at both 2048px and 820px, instead of at
-  the page end. With the description present it is unchanged at 462, 16px under it. atsu audit: 16/16.
+  rows are (`chapterList()`), which atsu now does.
+- The first explanation given for the reported page (a logged-in Premium layout with no description
+  where the anonymous one has it) was wrong: signed-in and signed-out atsu render the description in
+  the same place and differ only in the buttons under the cover. The fallback ordering was the real
+  weakness.
+- Verified with the description hidden behind `display:none`: the card lands at 422, above the first
+  chapter row at 503, at both 2048px and 820px. With the description present it is unchanged at 462,
+  16px under it. atsu audit: 16/16 at the time.
 
 ## [0.9.15] — unreleased
 

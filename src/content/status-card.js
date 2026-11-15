@@ -271,6 +271,7 @@
   let rerun = false;
   let mountedFor = '';      // the title the mounted card represents
   let mountedAt = 0;        // when it was mounted, for the retry budget
+  let corrections = 0;      // how many times the card was moved because it landed wrong
   let attempts = 0;         // placement attempts on this page
   let attemptsFor = '';     // which page those attempts belong to
   let lastNote = '';
@@ -399,15 +400,35 @@
    * 3s showed no panel at all, and one that hydrated sooner showed it, on the same build and the
    * same page.
    */
+  /**
+   * Is the card where it belongs? A visible card for the right series is not enough: the DOM can
+   * change under it (a description that renders late, a site re-layout) and leave a mounted card
+   * below the chapter list, which reads as broken. If a description exists and the card is below the
+   * chapter list, it is misplaced and gets re-rendered.
+   */
+  function misplaced() {
+    if (!mounted || !mounted.isConnected) return false;
+    const list = siteList();
+    if (!list || !list.isConnected) return false;
+    const box = list.getBoundingClientRect();
+    if (box.height < 200) return false;    // not a real chapter list, no opinion
+    // a card that starts below the end of the whole chapter list has landed at the page end. This does
+    // not depend on finding the description: when it cannot be found the card still must not sink.
+    return mounted.getBoundingClientRect().top > box.bottom - 8;
+  }
+
   function ensure() {
     if (!isSeriesPage()) { clearPanel(); return; }
     if (window.__kura.isInterstitial()) { clearPanel(); noteOnce('challenge page, not content'); return; }
     const title = seriesTitle();
     if (!title) { clearPanel(); noteOnce('no series title on this page'); return; }
     if (mounted && visible(mounted) && mountedFor === title) {
-      // a card that has stayed put for a while resets the budget, so a long session is never
-      // rationed to its first 40 mounts
-      if (Date.now() - mountedAt > 10000) attempts = 0;
+      // the page can settle after the first mount; a card that ended up below the chapter list is
+      // moved back rather than left there
+      if (misplaced() && corrections < 3) { corrections += 1; render(); return; }
+      // a card that has stayed put for a while resets both budgets, so a long session is never
+      // rationed to its first 40 mounts or its first 3 corrections
+      if (Date.now() - mountedAt > 10000) { attempts = 0; corrections = 0; }
       return;
     }
 

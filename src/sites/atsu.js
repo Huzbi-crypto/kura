@@ -1,4 +1,5 @@
 // atsu.js — https://atsu.moe/manga/<id>
+let lastList = null;   // chapter-list lookup cache: ensure() asks for it every 1.2s
 window.__kura.site({
   id: 'atsu',
   hosts: ['atsu.moe'],
@@ -27,7 +28,7 @@ window.__kura.site({
       // the chapter list.
       .filter((el) => el.getClientRects().length > 0 && el.getBoundingClientRect().height > 8)
       .map((el) => ({ el, t: (el.textContent || '').trim() }))
-      .filter(({ t }) => t.length > 80 && !/^(chapter|ch\.?|episode|ep\.?)\s*\d/i.test(t));
+      .filter(({ t }) => t.length > 40 && !/^(chapter|ch\.?|episode|ep\.?)\s*\d/i.test(t));
     if (!leaves.length) return null;   // no description: the panel falls back to above the chapter list
     leaves.sort((a, b) => b.t.length - a.t.length);
     return leaves[0].el;
@@ -35,19 +36,32 @@ window.__kura.site({
   // The chapter rows themselves, for when the description cannot be found: the panel anchors above
   // this container rather than at the end of the page. The shared finder looks for the word
   // "Chapters", which this layout does not always print as a heading.
+  // The first "Chapter N" match is the sidebar's open-chapter button, so this picks the container
+  // that holds the most rows instead of the first one it meets.
   chapterList: () => {
-    const row = [...document.querySelectorAll('a, button, div, li')]
-      .filter((el) => el.children.length < 3)
-      .find((el) => /^chapter\s*[\d.]+\b/i.test((el.textContent || '').trim()));
-    if (!row) return null;
-    let el = row;
-    for (let i = 0; i < 4 && el.parentElement; i++) {
-      const rows = [...el.parentElement.querySelectorAll('a, button, div, li')]
-        .filter((n) => /^chapter\s*[\d.]+\b/i.test((n.textContent || '').trim())).length;
-      if (rows >= 2 || el.parentElement.tagName === 'MAIN' || el.parentElement.tagName === 'BODY') break;
-      el = el.parentElement;
+    const now = Date.now();
+    if (lastList && lastList.node?.isConnected && lastList.path === location.pathname && now - lastList.at < 3000) {
+      return lastList.node;
     }
-    return el;
+    const rowish = (n) => n.children.length < 3
+      && /^(chapter|ch\.?|episode|ep\.?)\s*[\d.]+\b/i.test((n.textContent || '').trim());
+    const rows = [...document.querySelectorAll('a, button, div, li')].filter(rowish);
+    if (!rows.length) return null;
+    // count rows per ancestor in one pass, then take the ancestor that holds the most of them: the
+    // sidebar button and the row groups all score lower than the list itself
+    const score = new Map();
+    for (const row of rows.slice(0, 200)) {
+      let el = row.parentElement;
+      for (let i = 0; i < 6 && el && el.tagName !== 'BODY'; i++, el = el.parentElement) {
+        score.set(el, (score.get(el) || 0) + 1);
+      }
+    }
+    let best = null;
+    let bestScore = 0;
+    for (const [el, n] of score) if (n > bestScore) { bestScore = n; best = el; }
+    if (bestScore < 3) return null;
+    lastList = { node: best, path: location.pathname, at: now };
+    return best;
   },
   // what the per-site audit should verify here, so no shared check has to guess
   expect: 'afterSynopsis',
