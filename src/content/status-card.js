@@ -196,9 +196,18 @@
   // gets the generic anchor: the chapter list every reader has.
   const siteAnchor = () => {
     if (typeof site.placement === 'function') return site.placement() || null;
-    const list = chaptersLandmark();
+    const list = siteList();
     return list ? { before: list, geom: list } : null;
   };
+
+  /** the chapter list: the site's own answer first, the shared word-match second */
+  function siteList() {
+    if (typeof site.chapterList === 'function') {
+      const own = site.chapterList();
+      if (own) return own;
+    }
+    return chaptersLandmark();
+  }
 
   const STATE_TEXT = { reading: 'Reading', completed: 'Completed', paused: 'Paused', dropped: 'Dropped', planning: 'Plan to read', rereading: 'Re-reading' };
   const TRACKERS = { anilist: 'AniList', mal: 'MyAnimeList', mangabaka: 'MangaBaka' };
@@ -346,6 +355,12 @@
     }
     if (block?.parentElement) {
       spots.push({ how: 'after the series card', run: () => block.insertAdjacentElement('afterend', node) });
+    }
+    // A card below the whole chapter list reads as broken, so the chapter list is tried before the
+    // page end: when the description cannot be found at all, "above the chapters" is still coherent.
+    const list = siteList();
+    if (list?.parentElement) {
+      spots.push({ how: 'above the chapter list (fallback)', run: () => list.insertAdjacentElement('beforebegin', node) });
     }
     spots.push({ how: 'end of the content column', run: () => content.append(node) });
 

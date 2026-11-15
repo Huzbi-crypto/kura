@@ -28,9 +28,26 @@ window.__kura.site({
       .filter((el) => el.getClientRects().length > 0 && el.getBoundingClientRect().height > 8)
       .map((el) => ({ el, t: (el.textContent || '').trim() }))
       .filter(({ t }) => t.length > 80 && !/^(chapter|ch\.?|episode|ep\.?)\s*\d/i.test(t));
-    if (!leaves.length) return null;
+    if (!leaves.length) return null;   // no description: the panel falls back to above the chapter list
     leaves.sort((a, b) => b.t.length - a.t.length);
     return leaves[0].el;
+  },
+  // The chapter rows themselves, for when the description cannot be found: the panel anchors above
+  // this container rather than at the end of the page. The shared finder looks for the word
+  // "Chapters", which this layout does not always print as a heading.
+  chapterList: () => {
+    const row = [...document.querySelectorAll('a, button, div, li')]
+      .filter((el) => el.children.length < 3)
+      .find((el) => /^chapter\s*[\d.]+\b/i.test((el.textContent || '').trim()));
+    if (!row) return null;
+    let el = row;
+    for (let i = 0; i < 4 && el.parentElement; i++) {
+      const rows = [...el.parentElement.querySelectorAll('a, button, div, li')]
+        .filter((n) => /^chapter\s*[\d.]+\b/i.test((n.textContent || '').trim())).length;
+      if (rows >= 2 || el.parentElement.tagName === 'MAIN' || el.parentElement.tagName === 'BODY') break;
+      el = el.parentElement;
+    }
+    return el;
   },
   // what the per-site audit should verify here, so no shared check has to guess
   expect: 'afterSynopsis',

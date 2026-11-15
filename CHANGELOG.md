@@ -3,6 +3,22 @@
 All notable changes to Kura. Format: [Keep a Changelog](https://keepachangelog.com/), versioning
 follows [SemVer](https://semver.org/).
 
+## [0.9.16] — unreleased
+
+The panel no longer falls to the end of the page at all.
+
+- **The logged-in (Premium) layout has no description where the anonymous one does.** With nothing
+  found, the panel walked its spot list to the last resort, `end of the content column`, which is the
+  bottom of the page, left-aligned and below the whole chapter list.
+- **A chapter list is now tried before the page end.** When no description can be found, the panel is
+  inserted above the chapters instead of after everything. Sites can also answer where their chapter
+  rows are (`chapterList()`), which atsu now does: it finds the first `Chapter N` row and climbs to the
+  container holding the list. The shared word-match for a "Chapters" heading was not reliable in that
+  layout.
+- Verified with the description hidden behind `display:none` to imitate the layout we cannot log into:
+  the card lands at 422, above the first chapter row at 503, at both 2048px and 820px, instead of at
+  the page end. With the description present it is unchanged at 462, 16px under it. atsu audit: 16/16.
+
 ## [0.9.15] — unreleased
 
 The panel fell to the bottom of the page in a narrow window.
