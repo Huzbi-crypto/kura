@@ -220,16 +220,29 @@
   }
 
   function card(data, t) {
+    // The section is a wrapper, not the painted box: the box keeps the surface and the radius, and a
+    // rule below it closes the panel off so it reads as its own section rather than a heading for the
+    // description that follows.
     const wrap = el('section', {
-      margin: '16px 0 12px', padding: '14px 16px', background: t.surface,
+      margin: '16px 0 12px',
       width: t.width ? `${t.width}px` : undefined,
       maxWidth: t.width ? `${t.width}px` : undefined, marginLeft: t.offset ? `${t.offset}px` : undefined,
       boxSizing: 'border-box',
-      border: `1px solid ${t.line}`, borderRadius: t.radius,
       fontFamily: t.font, fontSize: t.size, lineHeight: t.height, color: t.ink,
-      display: 'flex', flexDirection: 'column', gap: '12px',
     });
     wrap.setAttribute('aria-label', 'Kura progress');
+
+    const box = el('div', {
+      padding: '14px 16px', background: t.surface,
+      border: `1px solid ${t.line}`, borderRadius: t.radius,
+      display: 'flex', flexDirection: 'column', gap: '12px',
+    });
+
+    const divider = el('div', {
+      height: '1px', background: t.line, border: '0',
+      marginTop: '18px', marginBottom: '2px',
+    });
+    divider.setAttribute('role', 'separator');
 
     const head = el('div', { display: 'flex', alignItems: 'baseline', gap: '10px', flexWrap: 'wrap' });
     const mark = el('span', { fontWeight: '600', letterSpacing: '0.03em', fontSize: `calc(${t.size} * 0.82)`, opacity: '0.66' }, 'KURA');
@@ -237,13 +250,13 @@
     const prog = el('span', { opacity: '0.82', marginLeft: 'auto', fontVariantNumeric: 'tabular-nums' },
       `Ch. ${data.chapter || 0}${data.total ? ' / ' + data.total : ''}${data.volume ? ` · Vol. ${data.volume}` : ''}`);
     head.append(mark, state, prog);
-    wrap.append(head);
+    box.append(head);
 
     // progress bar: replaces the site's own rating line, so neutral rather than a brand colour
     const track = el('div', { position: 'relative', height: '5px', borderRadius: '3px', background: 'rgba(255,255,255,0.18)', overflow: 'hidden', flex: '0 0 auto' });
     const pct = data.total ? Math.min(100, Math.round(((data.chapter || 0) / data.total) * 100)) : 0;
     track.append(el('i', { position: 'absolute', inset: '0 auto 0 0', borderRadius: '999px', width: `${pct}%`, background: t.accent || t.ink, opacity: '0.9', display: 'block' }));
-    wrap.append(track);
+    box.append(track);
 
     const rows = el('div', { display: 'flex', columnGap: '20px', rowGap: '8px', flexWrap: 'wrap', opacity: '0.85' });
     for (const [id, name] of Object.entries(TRACKERS)) {
@@ -259,7 +272,8 @@
       row.title = st.error ? `${name}: ${st.error}` : `${name}: ${st.state || 'unknown'}`;
       rows.append(row);
     }
-    if (rows.childNodes.length) wrap.append(rows);
+    if (rows.childNodes.length) box.append(rows);
+    wrap.append(box, divider);
     return wrap;
   }
 
@@ -444,8 +458,10 @@
       const box = mounted.getBoundingClientRect();
       const d = desc.getBoundingClientRect();
       const gap = d.top - box.bottom;
+      // the panel ends at its divider, so a small negative gap is the rule sitting between the card
+      // and the blurb — that is the intended look, not a misplacement
       beside = (mounted.compareDocumentPosition(desc) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0
-        && gap >= -8 && gap <= 140;
+        && gap >= -40 && gap <= 140;
     }
     if (visible(mounted) && !misplaced() && beside) return;
     corrections = 1;

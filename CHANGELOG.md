@@ -3,6 +3,17 @@
 All notable changes to Kura. Format: [Keep a Changelog](https://keepachangelog.com/), versioning
 follows [SemVer](https://semver.org/).
 
+## [0.9.20] — unreleased
+
+The panel ends with a rule, so it reads as its own section.
+
+- The card is now a wrapper `section` holding the painted box plus a 1px divider below it, spaced
+  18px down. Without it the panel sat directly above the synopsis and looked like a heading for the
+  description. Verified by sampling the rendered pixels: the rule paints `rgb(60,61,62)` against a
+  `rgb(29,30,32)` page background, which is a touch brighter than the page's own `0.8px` rules.
+- Because the panel now ends at that rule, the placement check measures its gap from the divider, so
+  a small negative `description.top - panel.bottom` is the intended look rather than a misplacement.
+
 ## [0.9.19] — unreleased
 
 The panel is no longer driven by page activity.
