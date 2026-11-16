@@ -60,6 +60,13 @@ counts when finished:
 Signals are read on scroll, on DOM mutation (timers are throttled in background tabs) and on a
 slow interval. The pill's ✓ button is the manual escape hatch and marks the chapter on screen.
 
+The pill only claims a chapter is read once the worker confirms it was recorded. The completion is
+sent through `post()`, which cannot throw: a message to a worker that no longer exists (the extension
+was reloaded, so every open tab holds an orphaned content script) comes back as a reason. While the
+write is in flight the pill says `saving…`; if it fails it says `not saved` with the reason, clears the
+tracker dots, and retries on the next tick at least 8s later, because a chapter that was finished must
+not depend on the user noticing.
+
 ## Site rules
 
 Every reader site is its own file in `src/sites/`, the way MAL-Sync gives each site its own folder

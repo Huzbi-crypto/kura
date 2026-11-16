@@ -48,3 +48,5 @@ tools/detect-test.js
 .cm*
 
 tools/inspect-site.mjs
+tools/repro-*.mjs
+tools/read-user-state.mjs

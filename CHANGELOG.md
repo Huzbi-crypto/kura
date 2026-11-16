@@ -3,6 +3,27 @@
 All notable changes to Kura. Format: [Keep a Changelog](https://keepachangelog.com/), versioning
 follows [SemVer](https://semver.org/).
 
+## [0.9.21] — unreleased
+
+The pill no longer says "read" for a chapter that was not saved.
+
+- **The completion is confirmed before the pill claims it.** `finishChapter()` painted 100% and the
+  ✓ *before* sending, and the send was unguarded. An extension reload leaves every open reader tab
+  with a dead `chrome.runtime`, `sendMessage` throws, and the result was a green "✓ read" over a
+  chapter nothing had recorded. Reproduced on stonescape
+  `/series/i-only-want-to-beat-you/ch-80`: reload the extension, scroll to the end, and the pill read
+  "✓ read" while the local chapter stayed at 79 and all three trackers were untouched.
+- **Every message goes through one `post()` that cannot throw.** A dead context comes back as
+  "Kura was reloaded, reload this page" and stays on the pill; every other failure is retryable.
+- **A failed save is visible and retried.** The pill shows `saving…` (amber) while the write is in
+  flight and `not saved` (red) with the reason when it fails, cleared only by a save that succeeds.
+  Retries ride the existing scroll/mutation tick, at least 8s apart, and stop on a dead context
+  because retrying there cannot help.
+- Stale tracker dots do not survive a failed save: they are cleared, so a write that never happened
+  cannot look synced.
+- Overlay harness: two scenarios stub `sendMessage` so it rejects once (retryable) and so it throws
+  (dead context). Both fail on the previous code, which reported "✓ read" with nothing saved.
+
 ## [0.9.20] — unreleased
 
 The panel ends with a rule, so it reads as its own section.

@@ -202,9 +202,13 @@
     .label b { font-weight: 650; color: #fff; }
     .read { color: #a9a9b6; font-variant-numeric: tabular-nums; }
     .read.done { color: #46d39a; }
+    .read.pending { color: #e7b34a; }
+    .read.failed { color: #ef5f5f; }
     .track { position: relative; width: 44px; height: 3px; border-radius: 2px; background: #2c2c36; overflow: hidden; flex: 0 0 auto; }
     .track i { position: absolute; inset: 0 auto 0 0; width: 0; background: #f0526b; transition: width .18s ease; }
     .track.done i { background: #46d39a; }
+    .track.pending i { background: #e7b34a; }
+    .track.failed i { background: #ef5f5f; }
     .dots { display: flex; gap: 4px; }
     .dot { width: 7px; height: 7px; border-radius: 50%; background: #3a3a45; }
     .dot.synced { background: #46d39a; }
@@ -307,8 +311,53 @@
     track.className = 'track' + (done ? ' done' : '');
   }
 
-  const send = (type, payload) => chrome.runtime.sendMessage({ type, ...payload });
+  /**
+   * Every message to the worker goes through here, and it never throws.
+   *
+   * A content script is not the extension: when the extension is reloaded or updated, this page keeps
+   * running but `chrome.runtime` is gone, and sendMessage dies. That failure used to be silent, and
+   * the pill went on claiming the chapter was read and the trackers synced. Now a send either answers
+   * or comes back with a reason the pill can show.
+   */
+  async function post(type, payload) {
+    try {
+      const r = await chrome.runtime.sendMessage({ type, ...payload });
+      if (!r) return { ok: false, reason: 'no answer from Kura' };
+      return r;
+    } catch (e) {
+      const why = String((e && e.message) || e || '');
+      // only a dead context is hopeless: this page has to be reloaded for the scripts to come back
+      if (/context invalidated|receiving end does not exist/i.test(why)) {
+        return { ok: false, stale: true, reason: 'Kura was reloaded, reload this page' };
+      }
+      return { ok: false, reason: why.slice(0, 80) || 'not saved' };
+    }
+  }
+
   const flash = (msg, ms = 2200) => { toast.textContent = msg; setTimeout(() => { if (toast.textContent === msg) toast.textContent = ''; }, ms); };
+
+  // the chapter whose save failed, so a scroll percentage cannot paint over the failure message
+  let notSavedKey = null;
+
+  /** a chapter that is being saved: the bar is full, the outcome is not known yet */
+  function paintSaving() {
+    readEl.textContent = 'saving…';
+    readEl.className = 'read pending';
+    bar.style.width = '100%';
+    track.className = 'track pending';
+  }
+
+  /** a chapter that could not be saved anywhere. Stays on screen: it is the only signal that exists */
+  function paintNotSaved(key, reason) {
+    notSavedKey = key;
+    readEl.textContent = 'not saved';
+    readEl.className = 'read failed';
+    bar.style.width = '100%';
+    track.className = 'track failed';
+    dots.innerHTML = '';          // no tracker claim survives a write that never happened
+    toast.textContent = reason;
+    reveal(0);
+  }
 
   /** a synopsis page is not a chapter: recording there created junk entries with impossible numbers */
   function isChapterPage() {
@@ -324,7 +373,7 @@
     if (!d.title) {
       // tell the worker anyway: "Kura ran here but could not read the page" is the log line
       // that explains a no-op on a reader layout we do not parse yet
-      send('reading', { ...d, title: '', chapter: null });
+      await post('reading', { ...d, title: '', chapter: null });
       // and stay visible instead of vanishing: a missing pill looked like a missing extension
       label.textContent = 'Kura · page not recognised';
       readEl.textContent = '';
@@ -354,6 +403,7 @@
       userScrolled = false;
       armed = false;
       openTop = 0;
+      notSavedKey = null;      // a failure belongs to the chapter it happened on, not to the next one
     }
     current = key;
 
@@ -371,28 +421,50 @@
     paintProgress(readPercent(), false);
     reveal();
     const ids = await collectIds(d.title);
-    const r = await send('reading', ids ? { ...d, ids } : d);
+    const r = await post('reading', ids ? { ...d, ids } : d);
     if (r?.ok) paintDots(r.trackers || {});
+    // a dead context is permanent for this page: say so and keep saying it. Any other refusal is a
+    // one-off (a bot wall, a page we cannot parse) and stays the short flash it has always been.
+    else if (r?.stale) { toast.textContent = r.reason; reveal(0); }
     else if (r?.reason) flash(String(r.reason).slice(0, 40));
   }
 
   /**
    * The chapter is finished when the last page of it has been on screen. Scroll percentage alone
    * misses paged, lazy-loading and infinite readers, where the height keeps changing under you.
+   *
+   * The pill does not say "read" until Kura says the chapter was recorded. A save that fails leaves
+   * the chapter retryable and says so on the pill: the old order (paint ✓, then send, ignore the
+   * error) told the user a chapter was tracked when nothing had been written anywhere, and the only
+   * trace was a tap on the extension's reload button hours earlier.
    */
   let completing = false;
+  let lastFinishAt = 0;
+  const FINISH_RETRY_MS = 8000;   // a failed save is retried on a later tick, not in a tight loop
 
   async function finishChapter() {
     const d = detect();
     // chapter 0 is a real chapter: compare against null, never falsiness
-    if (!d.title || d.chapter == null || completedKey === keyOf(d) || completing) return;
+    if (!d.title || d.chapter == null || completedKey === keyOf(d) || completing) return false;
+    const now = Date.now();
+    if (now - lastFinishAt < FINISH_RETRY_MS) return false;
     completing = true;
-    completedKey = keyOf(d);
-    paintProgress(100, true);
-    const r = await send('reading', { ...d, completed: true });
+    lastFinishAt = now;
+    const key = keyOf(d);
+    paintSaving();
+    const r = await post('reading', { ...d, completed: true });
     completing = false;
-    if (r?.ok) { paintDots(r.trackers || {}); reveal(4000); }
-    else flash(r?.reason ? String(r.reason).slice(0, 40) : 'not saved');
+    if (r.ok) {
+      completedKey = key;
+      notSavedKey = null;
+      toast.textContent = '';
+      paintProgress(100, true);
+      paintDots(r.trackers || {});
+      reveal(4000);
+      return true;
+    }
+    paintNotSaved(key, r.stale ? r.reason : `not saved: ${r.reason}`);
+    return false;
   }
 
   /** an explicit "end of chapter" marker in view — mangadot prints one after the last page */
@@ -474,7 +546,9 @@
       }
       if (pct !== lastPct) {
         lastPct = pct;
-        paintProgress(pct, completedKey === keyOf(d));
+        const key = keyOf(d);
+        // a save in flight, or one that failed, owns the pill: a scroll must not paint over it
+        if (!completing && notSavedKey !== key) paintProgress(pct, completedKey === key);
       }
       // A chapter is finished when you reach the far end of it — at 95%, as MAL-Sync does, because
       // you cannot know what sits below (a comments section can be longer than the chapter), plus an
@@ -499,9 +573,13 @@
     // no longer counts, which is why this must not jump to chapter+1
     const target = d.chapter ?? Number(chInput.value);
     if (!Number.isFinite(target) || target <= 0) { chInput.focus(); return; }
-    const r = await send('reading', { ...d, chapter: target, completed: true });
-    if (r?.ok) {
-      current = `${d.title}|${target}`;
+    const key = `${d.title}|${target}`;
+    paintSaving();
+    const r = await post('reading', { ...d, chapter: target, completed: true });
+    if (r.ok) {
+      completedKey = key;
+      notSavedKey = null;
+      current = key;
       label.innerHTML = `<b>${d.title}</b> · ch ${target}`;
       manualMode(false);
       paintDots(r.trackers || {});
@@ -509,15 +587,14 @@
       flash(`ch ${target} read`);
       reveal();
     } else {
-      flash(r?.reason ? String(r.reason).slice(0, 40) : 'not saved');
-      reveal();
+      paintNotSaved(key, r.stale ? r.reason : `not saved: ${r.reason}`);
     }
   });
 
   // exposed for the test harness and for debugging a reader layout in the field
   window.__kuraDebug = {
     detect, readPercent, atScrollEnd, endMarkerVisible, pagedAtLastPage,
-    state: () => ({ current, completedKey, userScrolled, lastRun, runs, lastError, completing, lastSeen }),
+    state: () => ({ current, completedKey, userScrolled, lastRun, runs, lastError, completing, lastSeen, notSavedKey }),
   };
 
   function mount() {
