@@ -3,6 +3,21 @@
 All notable changes to Kura. Format: [Keep a Changelog](https://keepachangelog.com/), versioning
 follows [SemVer](https://semver.org/).
 
+## [0.9.23] — unreleased
+
+The panel finds a series by the ids the page declares, not only by its name.
+
+- **`status` takes the page's own tracker ids.** A series page links AniList, MAL and MangaBaka in its
+  info block; those anchors are read and sent with the lookup, and the record is matched by id before
+  any title comparison. The page calls a series "Heisei Haizanhei Sumire-chan" while the library holds
+  "Heisei Holdout Sumire-chan", so the panel logged "not in the library" while the popup showed the
+  series with all three trackers green. Reproduced on atsu: eight "not in the library" lines in eight
+  minutes for a record that was right there.
+- **A match by id stores the page's name as an alias**, so the title path works on the next visit too
+  and the record converges on every name the sites use for it.
+- Verified on the live atsu page: the panel renders for "Mikoto-chan Doesn't Want to Be Hated!" against
+  a library whose records carry other names; harness: by title not found, by id found, alias written.
+
 ## [0.9.22] — unreleased
 
 A "-chan" in a title is not a chapter number, and one series stays one record.

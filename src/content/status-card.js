@@ -26,6 +26,24 @@
   // the registry: a logo is a fragment of its own hostname (stonescape's is an h1 split into "STONE"
   // + "SCAPE"), so this file needs no brand list.
   const isBrand = (t) => window.__kura.isBrand(t);
+
+  // The page knows which series this is: its info block links the trackers. Those ids are facts, and
+  // a record is found by them no matter what either side calls the series ("Heisei Haizanhei
+  // Sumire-chan" on the page, "Heisei Holdout Sumire-chan" in the library).
+  const TRACKER_LINK = {
+    anilist: /anilist\.co\/manga\/(\d+)/i,
+    mal: /myanimelist\.net\/manga\/(\d+)/i,
+    mangabaka: /mangabaka\.org\/(?:manga|manhwa|manhua)\/(\d+)/i,
+  };
+  function pageIds() {
+    const hrefs = [...document.querySelectorAll('a[href]')].map((a) => a.href).join(' ');
+    const out = {};
+    for (const [tracker, re] of Object.entries(TRACKER_LINK)) {
+      const m = hrefs.match(re);
+      if (m) out[tracker] = Number(m[1]);
+    }
+    return Object.keys(out).length ? out : null;
+  }
   const isLogoHeading = (h) => !!h.closest('a[href="/"]');
   const stripTail = (t) => String(t || '').split(/[|—–]/)[0].replace(/[\s\-–—·]+$/, '').trim();
 
@@ -422,7 +440,9 @@
     let data;
     try {
       // the worker sleeps often: one retry, and never fail silently
-      data = await send({ type: 'status', title }).catch(() => send({ type: 'status', title }));
+      const ids = pageIds();
+      const askStatus = () => send({ type: 'status', title, ...(ids ? { ids } : {}) });
+      data = await askStatus().catch(askStatus);
     } catch (e) {
       tries++;
       await noteOnce(`status lookup failed: ${e.message}`, { title });

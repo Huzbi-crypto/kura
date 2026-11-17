@@ -176,10 +176,29 @@ const handlers = {
     return { ok: true, created, seriesId: s.id, title: s.title, chapter: st?.chapter ?? chapter, trackers: marks };
   },
   /** series-page panel: the local state for whatever series the page is about */
-  async status({ title }) {
-    if (!title) return { found: false, reason: 'no title' };
+  async status({ title, ids }) {
+    if (!title && !ids) return { found: false, reason: 'no title' };
     const all = await S.all();
-    const s = findSeries(title, all);
+    // the ids the page declares are facts; a title is a guess, and the two sides rarely agree on the
+    // name ("Heisei Haizanhei Sumire-chan" on the page, "Heisei Holdout Sumire-chan" in the library)
+    let s = null;
+    let hits = 0;
+    for (const candidate of all) {
+      let n = 0;
+      for (const [tracker, id] of Object.entries(ids || {})) {
+        if (candidate.links?.[tracker] != null && String(candidate.links[tracker]) === String(id)) n++;
+      }
+      if (n > hits) { s = candidate; hits = n; }
+    }
+    if (s && title) {
+      const known = [s.title, ...(s.aliases || [])].some((a) => normalizeTitle(a) === normalizeTitle(title));
+      if (!known) {
+        s.aliases = [...new Set([...(s.aliases || []), title])];
+        await S.put(s);
+        await logEvent('match', `page title "${title}" is "${s.title}" (matched by the page's own ids)`, { title: s.title });
+      }
+    }
+    if (!s) s = title ? findSeries(title, all) : null;
     if (!s) {
       await logEvent('panel', `not in the library: "${title}"`, { title });
       return { found: false, reason: 'not in library' };
