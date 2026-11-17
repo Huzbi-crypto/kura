@@ -276,8 +276,12 @@ const handlers = {
     try { await resolveLinks(s); } catch { /* the bridge is best effort; the chosen id is kept */ }
     await S.put(s);
     await logEvent('match', `linked by hand: ${tracker}=${id}`, { title: s.title });
+    // the same series may already be in the library under another name and another tracker: the pick
+    // is what makes those two records provably one, so fold them before syncing
+    let merged = 0;
+    try { merged = (await dedupeSeries({ dryRun: false })).removed || 0; } catch { /* merging is best effort */ }
     const st = await syncSeries(s.id);
-    return { series: s, state: st };
+    return { series: s, state: st, merged };
   },
   /** one series, folded: the same record created many times by a linking bug */
   async dedupe({ dryRun = true }) { return dedupeSeries({ dryRun }); },
