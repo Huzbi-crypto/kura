@@ -1,8 +1,8 @@
 // background.js — service worker: routes reader events, keeps the retry queue warm.
-import { series as S, state as ST, normTitle } from './db.js';
-import { recordProgress, setProgress, drainQueue, syncSeries, pullInto, pushOut, connected, importTracker, backfillCovers, library as libAll, linkByTitle, trackers } from './sync.js';
+import { series as S, state as ST } from './db.js';
+import { recordProgress, setProgress, drainQueue, syncSeries, pullInto, pushOut, connected, importTracker, backfillCovers, library as libAll, linkByTitle, trackers, dedupeSeries } from './sync.js';
 import { newSeries, resolveLinks } from './mapping.js';
-import { bestMatch, normalizeTitle, bestTitleScore, findSeries } from './match.js';
+import { bestMatch, normalizeTitle, bestTitleScore, findSeries, findByAnyTitle } from './match.js';
 import * as mangabaka from './trackers/mangabaka.js';
 import { logEvent, readEvents, clearEvents } from './diag.js';
 
@@ -26,14 +26,25 @@ chrome.alarms.onAlarm.addListener(async (a) => {
   } catch (e) { log('drain failed', e.message); }
 });
 
+/**
+ * The local record a reader page refers to, created once and never renamed away from the page.
+ *
+ * Three rules, each one paid for by a duplicate storm:
+ *   1. The record keeps the title the page gave (or the one it is known by), not the search hit's
+ *      title. Storing "Heisei Holdout Sumire-chan" for a page that says "Heisei Haizanhei Sumire-chan"
+ *      meant the next visit could not find it and added another copy — 39 copies in four minutes.
+ *   2. Every other name is kept as an alias, so the next visit matches by name.
+ *   3. If the search hit's id is already on a local record, that record *is* this series under another
+ *      name. A tracker id is a fact, and it bridges romaji and English where no title comparison can.
+ */
 async function ensureSeries(title, host) {
-  const norm = normTitle(title);
-  let s = await S.byTitle(norm);
-  if (s) return { series: s, created: false };
+  const all = await S.all();
+  const exact = findByAnyTitle(all, title);
+  if (exact) return { series: exact, created: false };
 
   // readers decorate titles; an unmatched page becomes a duplicate entry with no links, which
   // never syncs. Try a tolerant match over the local library before creating anything new.
-  const fuzzy = bestMatch(title, await S.all());
+  const fuzzy = bestMatch(title, all);
   if (fuzzy) {
     await logEvent('match', `matched "${title}" to existing "${fuzzy.series.title}" (${fuzzy.how} ${fuzzy.score.toFixed(2)})`);
     return { series: fuzzy.series, created: false };
@@ -41,11 +52,28 @@ async function ensureSeries(title, host) {
   // try the metadata service before creating a bare entry
   let meta = null;
   try { meta = (await mangabaka.search(title))[0] || null; } catch { /* offline is fine */ }
-  s = newSeries({ title: meta?.title || title, cover: meta?.cover || null, total: meta?.total || 0, links: meta?.id ? { mangabaka: meta.id } : {} });
+
+  const owned = meta?.id ? all.find((x) => String(x.links?.mangabaka) === String(meta.id)) : null;
+  if (owned) {
+    const aliases = [...new Set([...(owned.aliases || []), title])].filter((a) => normalizeTitle(a) !== normalizeTitle(owned.title));
+    if (aliases.length) owned.aliases = aliases;
+    if (!owned.cover && meta.cover) owned.cover = meta.cover;
+    if (!owned.total && meta.total) owned.total = meta.total;
+    await S.put(owned);
+    await logEvent('match', `"${title}" is the same series as "${owned.title}" (mangabaka=${meta.id})`, { host });
+    return { series: owned, created: false };
+  }
+
+  const s = newSeries({
+    title,
+    cover: meta?.cover || null,
+    total: meta?.total || 0,
+    links: meta?.id ? { mangabaka: meta.id } : {},
+    aliases: meta?.title ? [meta.title] : [],
+  });
   if (!meta?.id) await logEvent('match', `no MangaBaka result for "${title}" — new series with no links yet`, { host });
   s.sourceHost = host;
   if (s.links.mangabaka) { try { await resolveLinks(s); } catch { /* bridge is best effort */ } }
-  s.normTitle = normalizeTitle(s.title) || s.normTitle;
   await S.put(s);
   return { series: s, created: true };
 }
@@ -218,6 +246,41 @@ const handlers = {
     await resolveLinks(s);
     return s;
   },
+  /** what the connected trackers have for a title: the reader picks the right one */
+  async candidates({ title }) {
+    if (!title) return { results: [] };
+    const out = [];
+    for (const t of trackers) {
+      if (!(await t.meta.connected())) continue;
+      try {
+        const hits = (await t.search(title)) || [];
+        for (const h of hits.slice(0, 8)) {
+          out.push({ tracker: t.meta.id, id: h.id, title: h.title, total: h.total || 0, cover: h.cover || null });
+        }
+      } catch { /* one tracker failing must not hide the others */ }
+    }
+    return { results: out };
+  },
+  /**
+   * The reader says which series this is. That choice is the truth: every other id on the record was a
+   * guess from a title, so it is dropped and the bridge rebuilds from the chosen one.
+   */
+  async choose({ seriesId, tracker, id }) {
+    const s = await S.get(seriesId);
+    if (!s) return { ok: false, reason: 'that series is not in the library' };
+    const t = trackers.find((x) => x.meta.id === tracker);
+    if (!t) return { ok: false, reason: 'unknown tracker' };
+    s.links = { [tracker]: id };
+    s.linkSource = { [tracker]: 'manual' };
+    await S.put(s);
+    try { await resolveLinks(s); } catch { /* the bridge is best effort; the chosen id is kept */ }
+    await S.put(s);
+    await logEvent('match', `linked by hand: ${tracker}=${id}`, { title: s.title });
+    const st = await syncSeries(s.id);
+    return { series: s, state: st };
+  },
+  /** one series, folded: the same record created many times by a linking bug */
+  async dedupe({ dryRun = true }) { return dedupeSeries({ dryRun }); },
   async forget({ seriesId }) { await S.del(seriesId); return { ok: true }; },
   async syncOne({ seriesId }) { return syncSeries(seriesId); },
 };

@@ -14,6 +14,8 @@
   if (!isSeriesPage()) return;
 
   const send = (msg) => chrome.runtime.sendMessage(msg);
+  /** a send that cannot throw: the panel must survive a worker that is gone */
+  const ask = async (msg) => { try { return await send(msg); } catch (e) { return { ok: false, reason: String((e && e.message) || e) }; } };
   // never let a missing API kill the panel (older stubs, restricted contexts)
   try { document.documentElement.dataset.kuraStatus = chrome.runtime.getManifest().version; } catch { /* version is cosmetic */ }
 
@@ -273,8 +275,89 @@
       rows.append(row);
     }
     if (rows.childNodes.length) box.append(rows);
+
+    // The escape hatch MAL-Sync has: a title match is a guess, and when it is wrong the only way back
+    // is for the reader to point at the right entry. Quiet by default, so the card stays a status line.
+    const foot = el('div', { display: 'flex', justifyContent: 'flex-end', marginTop: '2px' });
+    const fix = el('button', {
+      all: 'unset', cursor: 'pointer', fontSize: `calc(${t.size} * 0.9)`, opacity: '0.55',
+      textDecoration: 'underline', textUnderlineOffset: '2px',
+    }, 'Wrong series? Pick it');
+    fix.type = 'button';
+    fix.setAttribute('aria-label', `Pick the right series for ${data.title}`);
+    fix.onclick = () => openChooser(box, data, t);
+    foot.append(fix);
+    box.append(foot);
     wrap.append(box, divider);
     return wrap;
+  }
+
+  /**
+   * Inline search over every connected tracker, so the reader can say which series this really is.
+   * Picking one replaces the record's identity with that id and lets the bridge fill the rest; the
+   * chapter already recorded is pushed to whatever the pick resolves to.
+   */
+  async function openChooser(box, data, t) {
+    for (const child of [...box.children]) child.remove();
+    const head = el('div', { display: 'flex', alignItems: 'baseline', gap: '10px' },
+      'Pick the series');
+    head.style.fontWeight = '600';
+    box.append(head);
+
+    const form = el('div', { display: 'flex', gap: '8px' });
+    const input = el('input', {
+      flex: '1 1 auto', minWidth: '0', padding: '6px 8px', borderRadius: '6px',
+      border: `1px solid ${t.line}`, background: 'transparent', color: t.ink, font: 'inherit',
+    });
+    input.type = 'search';
+    input.value = data.title || '';
+    input.setAttribute('aria-label', 'Search for the series');
+    const go = el('button', { cursor: 'pointer', padding: '6px 10px', borderRadius: '6px', border: `1px solid ${t.line}`, background: 'transparent', color: t.ink, font: 'inherit' }, 'Search');
+    go.type = 'button';
+    form.append(input, go);
+    box.append(form);
+
+    const list = el('div', { display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '260px', overflowY: 'auto' });
+    box.append(list);
+    const cancel = el('button', { all: 'unset', cursor: 'pointer', opacity: '0.6', fontSize: `calc(${t.size} * 0.9)`, textDecoration: 'underline' }, 'Cancel');
+    cancel.type = 'button';
+    cancel.onclick = () => { clearPanel(); render(); };
+    box.append(cancel);
+
+    const search = async () => {
+      list.replaceChildren(el('div', { opacity: '0.6' }, 'Searching…'));
+      const r = await ask({ type: 'candidates', title: input.value.trim() });
+      const rows = r?.results || [];
+      list.replaceChildren();
+      if (!rows.length) {
+        list.append(el('div', { opacity: '0.6' }, 'No series found. Try another spelling.'));
+        return;
+      }
+      for (const hit of rows) {
+        const b = el('button', {
+          all: 'unset', cursor: 'pointer', display: 'flex', gap: '10px', alignItems: 'center',
+          padding: '6px 8px', borderRadius: '6px', border: `1px solid ${t.line}`,
+        });
+        b.type = 'button';
+        const name = el('span', { flex: '1 1 auto', minWidth: '0' },
+          `${hit.title}${hit.total ? ` · ${hit.total} ch` : ''}`);
+        const where = el('span', { opacity: '0.55', fontSize: `calc(${t.size} * 0.85)` }, `${TRACKERS[hit.tracker] || hit.tracker}`);
+        b.append(name, where);
+        b.onclick = async () => {
+          list.replaceChildren(el('div', { opacity: '0.6' }, 'Saving…'));
+          const res = await ask({ type: 'choose', seriesId: data.seriesId, tracker: hit.tracker, id: hit.id });
+          if (!res?.ok) {
+            list.replaceChildren(el('div', { opacity: '0.8' }, res?.reason || 'could not save that link'));
+            return;
+          }
+          clearPanel();
+          render();
+        };
+        list.append(b);
+      }
+    };
+    go.onclick = search;
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') search(); });
   }
 
   let mounted = null;

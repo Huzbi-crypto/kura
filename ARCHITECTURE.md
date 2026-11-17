@@ -47,6 +47,20 @@ Order of authority, highest first:
 Title matching must never be trusted when a page declares an id. It exists for sites that publish
 no links at all.
 
+A title is not a stable name, so a record is more than one string. The page's own title is what the
+record keeps, and every other name the trackers publish for it becomes an alias (`aliases[]`) that
+`findByAnyTitle` and `bestMatch` score. When no name matches, the MangaBaka search that already runs
+is used as identity rather than as metadata: if its hit's id is on an existing record, that record is
+the same series under another name and is reused. Skipping either rule produced the failure this
+project has seen twice — a series split across records by name (39 copies of one series in four
+minutes), and a chapter written into a stranger's entry because a hyphenated title was truncated to a
+different, real manga.
+
+Where all of that still has to guess, the reader gets the last word: the series-page panel carries
+"Wrong series? Pick it", which searches every connected tracker and rebuilds the identity from the id
+the reader chooses (`linkSource: 'manual'`). A guess is allowed; a guess that cannot be corrected is
+not.
+
 ## Progress semantics
 
 Opening a chapter does **not** advance anything; it records `lastSeenChapter` locally. A chapter

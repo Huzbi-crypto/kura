@@ -7,8 +7,13 @@ import { series as S, uid, normTitle } from './db.js';
 
 const MB = 'https://api.mangabaka.org/v1';
 
-export function newSeries({ title, cover = null, total = 0, links = {} }) {
-  return { id: uid(), title, normTitle: normTitle(title), cover, total, links: { ...links }, createdAt: Date.now() };
+export function newSeries({ title, cover = null, total = 0, links = {}, aliases = [] }) {
+  const s = { id: uid(), title, normTitle: normTitle(title), cover, total, links: { ...links }, createdAt: Date.now() };
+  // other names the trackers publish for this series (romaji vs English): used to recognise the same
+  // page next time instead of creating the series again under a slightly different title
+  const extra = [...new Set(aliases.filter(Boolean))].filter((a) => a !== title);
+  if (extra.length) s.aliases = extra;
+  return s;
 }
 
 async function mbSeries(id) {

@@ -5,7 +5,7 @@ import * as mangabaka from './trackers/mangabaka.js';
 import * as mal from './trackers/mal.js';
 import { series as S, state as ST, queue as Q, normTitle } from './db.js';
 import { resolveLinks, newSeries } from './mapping.js';
-import { pickCandidate } from './match.js';
+import { pickCandidate, normalizeTitle } from './match.js';
 
 export const trackers = [anilist, mangabaka, mal];
 export const trackerMeta = trackers.map((t) => t.meta);
@@ -63,6 +63,8 @@ export async function linkByTitle(s, { force = false } = {}) {
     const picked = pickCandidate(s.title, hits);
     if (picked.kind === 'match') {
       s.links[id] = picked.top.hit.id;
+      // provenance: the panel and the audit can tell a page fact from a title guess
+      s.linkSource = { ...(s.linkSource || {}), [id]: 'title' };
       log.push(`${id}: linked "${picked.top.best.title}" (${picked.top.best.score.toFixed(2)})`);
     } else if (picked.kind === 'ambiguous') {
       log.push(`${id}: ambiguous — "${picked.top.hit.title}" vs "${picked.rival.hit.title}", not linked`);
@@ -249,6 +251,73 @@ export async function backfillCovers(limit = 15) {
     } catch { /* metadata is optional */ }
   }
   return filled;
+}
+
+/**
+ * Records that describe the same series, folded into one.
+ *
+ * A linking bug can create the same record many times (39 copies of one series in four minutes), and
+ * the reader's library then has no way back by hand. Two records are the same series when they carry
+ * the same tracker id (the strongest fact available) or the same normalised title. The kept record
+ * takes the highest chapter, every id, and every name the others were known by, so a later page visit
+ * still finds it.
+ *
+ * dryRun returns the plan without touching anything: a destructive pass over someone's library has to
+ * be inspectable before it runs.
+ */
+export async function dedupeSeries({ dryRun = true } = {}) {
+  const all = await S.all();
+  const idKey = (s) => (s.links?.mangabaka ? `mangabaka:${s.links.mangabaka}`
+    : s.links?.anilist ? `anilist:${s.links.anilist}`
+      : s.links?.mal ? `mal:${s.links.mal}` : null);
+  const groups = new Map();
+  for (const s of all) {
+    const key = idKey(s) || `title:${s.normTitle || normTitle(s.title)}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(s);
+  }
+  const plan = [];
+  for (const [key, rows] of groups) {
+    if (rows.length < 2) continue;
+    // keep the record that knows the most, then the oldest: it is the one the reader has been using
+    const keeper = [...rows].sort((a, b) => (Object.keys(b.links || {}).length - Object.keys(a.links || {}).length)
+      || ((a.createdAt || 0) - (b.createdAt || 0)))[0];
+    plan.push({ key, keeper, rows });
+  }
+  if (dryRun) {
+    return {
+      dryRun: true,
+      duplicates: plan.reduce((n, g) => n + g.rows.length - 1, 0),
+      groups: plan.slice(0, 20).map((g) => ({ title: g.keeper.title, count: g.rows.length })),
+    };
+  }
+  let removed = 0;
+  for (const { keeper, rows } of plan) {
+    const states = await Promise.all(rows.map((r) => ST.get(r.id)));
+    const chapter = Math.max(0, ...states.map((st) => st.chapter || 0));
+    const links = { ...(keeper.links || {}) };
+    const linkSource = { ...(keeper.linkSource || {}) };
+    const aliases = new Set(keeper.aliases || []);
+    for (const r of rows) {
+      if (r === keeper) continue;
+      for (const [t, id] of Object.entries(r.links || {})) if (!links[t]) { links[t] = id; linkSource[t] = r.linkSource?.[t] || 'merged'; }
+      if (normalizeTitle(r.title) !== normalizeTitle(keeper.title)) aliases.add(r.title);
+      for (const a of r.aliases || []) aliases.add(a);
+      if (r.cover && !keeper.cover) keeper.cover = r.cover;
+      if (r.total && !keeper.total) keeper.total = r.total;
+      await S.del(r.id);
+      removed++;
+    }
+    keeper.links = links;
+    if (Object.keys(linkSource).length) keeper.linkSource = linkSource;
+    const extra = [...aliases].filter((a) => normalizeTitle(a) !== normalizeTitle(keeper.title));
+    if (extra.length) keeper.aliases = extra;
+    await S.put(keeper);
+    const st = await ST.get(keeper.id);
+    if (chapter > (st.chapter || 0)) { st.chapter = chapter; st.updatedAt = Date.now(); }
+    await ST.put(st);
+  }
+  return { dryRun: false, removed, groups: plan.length };
 }
 
 export async function library() {

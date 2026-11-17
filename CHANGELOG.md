@@ -3,6 +3,34 @@
 All notable changes to Kura. Format: [Keep a Changelog](https://keepachangelog.com/), versioning
 follows [SemVer](https://semver.org/).
 
+## [0.9.22] — unreleased
+
+A "-chan" in a title is not a chapter number, and one series stays one record.
+
+- **Title cleaning no longer cuts inside a hyphenated word.** The separator rule matched `-ch` in
+  "Mikoto-chan", so atsu's "Mikoto-chan Doesn't Want to Be Hated! - Chapter 80" became "Mikoto" — a
+  real, different manga (AniList 147084, MangaBaka 97969, 11 chapters). The chapter was then linked
+  to that stranger's entry. Reproduced on atsu `/read/QtFM/tyztzh`: the overlay's `detect()` returned
+  "Mikoto" while `<title>` was whole. A separator now only cuts when a chapter or volume word is
+  followed by a number.
+- **A record keeps the title the page gave, not the search hit's.** Storing MangaBaka's "Heisei
+  Holdout Sumire-chan" for a page that says "Heisei Haizanhei Sumire-chan" meant the next visit could
+  not find the record it had made seconds earlier: 39 identical records in four minutes, each one a
+  fresh `new series added`. The tracker's title is kept as an alias instead.
+- **Aliases and tracker ids are matched.** `findByAnyTitle` and `bestMatch` score every name a record
+  is known by, and `ensureSeries` reuses the record that already owns the MangaBaka id the search
+  returned. An id bridges romaji and English where no title comparison can.
+- **Duplicates can be folded.** Setup has a "Local records" card: it counts duplicate records (same
+  tracker id, or same normalised title), says what will be kept, and merges them into one record that
+  carries every id and the highest chapter. Dry run first; it is a destructive pass on a library.
+- **You can say which series it is.** The panel ends with "Wrong series? Pick it": it searches every
+  connected tracker with the page's title and re-links the record to the entry you choose, then
+  re-syncs. This is the escape hatch a title match needs, and it is the only path that can correct a
+  guess after the fact.
+- Verified: overlay harness (the "-chan" title renders whole), matcher unit tests (alias lookup),
+  extension harness (alias reuse, id reuse, dedupe 3 records to 1), panel harness and the live atsu
+  page (the picker sends `choose` with the chosen id).
+
 ## [0.9.21] — unreleased
 
 The pill no longer says "read" for a chapter that was not saved.

@@ -45,11 +45,28 @@ export function bestTitleScore(title, titles) {
   return best;
 }
 
-/** find the local series a page title refers to: exact, then tolerant, never a guess */
-export function findSeries(title, library) {
+/** every name a series is known by: its own title plus the aliases its trackers publish */
+export function titleVariants(s) {
+  return [s.title, ...(s.aliases || [])].filter(Boolean);
+}
+
+/**
+ * The record a title refers to, by any name it is known by.
+ *
+ * A reader and a tracker disagree about names constantly: atsu says "Heisei Haizanhei Sumire-chan"
+ * while MangaBaka's primary title is "Heisei Holdout Sumire-chan" for the same series. Comparing only
+ * the stored title meant the second visit could not find the record it had just created, and every
+ * visit added another copy of it.
+ */
+export function findByAnyTitle(library, title) {
   const norm = normalizeTitle(title);
   if (!norm) return null;
-  const exact = library.find((s) => (s.normTitle || normalizeTitle(s.title)) === norm);
+  return library.find((s) => titleVariants(s).some((t) => normalizeTitle(t) === norm)) || null;
+}
+
+/** find the local series a page title refers to: exact, then tolerant, never a guess */
+export function findSeries(title, library) {
+  const exact = findByAnyTitle(library, title);
   if (exact) return exact;
   return bestMatch(title, library)?.series || null;
 }
@@ -82,14 +99,19 @@ export function bestMatch(title, candidates, threshold = 0.8) {
   if (!norm) return null;
   let best = null;
   for (const c of candidates) {
-    const other = c.normTitle || normalizeTitle(c.title);
-    if (!other) continue;
-    // containment only when nearly the whole title is present: a sequel adds real words
-    // ("Solo Leveling: Ragnarok"), which must not be merged into the original.
-    const contains = (other.includes(norm) || norm.includes(other))
-      && Math.min(norm.length, other.length) / Math.max(norm.length, other.length) >= 0.8;
-    const score = contains ? Math.max(0.86, similarity(norm, other)) : similarity(norm, other);
-    if (score >= threshold && (!best || score > best.score)) best = { series: c, score, how: contains ? 'contains' : 'similar' };
+    // score every name the record is known by, and keep its best: an alias is the same series
+    for (const variant of titleVariants(c)) {
+      const other = normalizeTitle(variant);
+      if (!other) continue;
+      // containment only when nearly the whole title is present: a sequel adds real words
+      // ("Solo Leveling: Ragnarok"), which must not be merged into the original.
+      const contains = (other.includes(norm) || norm.includes(other))
+        && Math.min(norm.length, other.length) / Math.max(norm.length, other.length) >= 0.8;
+      const score = contains ? Math.max(0.86, similarity(norm, other)) : similarity(norm, other);
+      if (score >= threshold && (!best || score > best.score)) {
+        best = { series: c, score, how: contains ? 'contains' : 'similar', title: variant };
+      }
+    }
   }
   return best;
 }

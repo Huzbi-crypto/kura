@@ -67,6 +67,15 @@
       </div>
 
       <div class="card">
+        <div class="who"><b>Local records</b><span id="dedupe-state" class="state"></span></div>
+        <p class="muted">The same series can land in your library more than once, under two names or after a linking bug. This folds them into one and keeps every tracker id.</p>
+        <div class="row">
+          <button id="dedupe-check" class="ghost">Check for duplicates</button>
+          <button id="dedupe-run" class="ghost" disabled>Remove duplicates</button>
+        </div>
+      </div>
+
+      <div class="card">
         <div class="who"><b>Activity</b><span id="diag-count" class="state"></span></div>
         <p class="muted">What Kura did on reader pages. When a chapter does not sync, the reason is here.</p>
         <div id="diag-log" class="log"></div>

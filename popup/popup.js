@@ -249,7 +249,30 @@ async function loadDiag() {
   $('#watch-sites').textContent = 'Reader sites Kura watches: ' + (sites || 'none');
 }
 
+async function checkDuplicates() {
+  const state = $('#dedupe-state');
+  const run = $('#dedupe-run');
+  if (!state || !run) return;
+  try {
+    const r = await send({ type: 'dedupe', dryRun: true });
+    const n = r?.duplicates || 0;
+    state.textContent = n ? `${n} duplicate${n === 1 ? '' : 's'}` : 'none';
+    run.disabled = !n;
+    run.textContent = n ? `Remove ${n} duplicate${n === 1 ? '' : 's'}` : 'Remove duplicates';
+    run.title = n ? (r.groups || []).map((g) => `${g.title} ×${g.count}`).join('\n') : '';
+  } catch (e) {
+    state.textContent = 'could not check';
+  }
+}
+
 function bindSettings() {
+  $('#dedupe-check').onclick = () => checkDuplicates();
+  $('#dedupe-run').onclick = async () => {
+    const r = await send({ type: 'dedupe', dryRun: false });
+    showToast(r?.removed ? `Removed ${r.removed} duplicate record${r.removed === 1 ? '' : 's'}` : 'nothing to remove');
+    await checkDuplicates();
+    refresh();
+  };
   $('#diag-refresh').onclick = () => loadDiag();
   $('#diag-clear').onclick = async () => { await send({ type: 'clearDiag' }); loadDiag(); };
   $('#anilist-connect').onclick = async () => {
@@ -292,7 +315,7 @@ function bindSettings() {
 
 /* ---------- boot ---------- */
 document.querySelector('.brand span').textContent = `manga tracker · v${chrome.runtime.getManifest().version}`;
-document.querySelectorAll('.tabs button').forEach((b) => (b.onclick = () => { show(b.dataset.view); if (b.dataset.view === 'settings') loadDiag(); }));
+document.querySelectorAll('.tabs button').forEach((b) => (b.onclick = () => { show(b.dataset.view); if (b.dataset.view === 'settings') { loadDiag(); checkDuplicates(); } }));
 $('#filter').oninput = renderLibrary;
 $('#go').onclick = search;
 $('#q').addEventListener('keydown', (e) => { if (e.key === 'Enter') search(); });

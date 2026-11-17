@@ -10,10 +10,18 @@
   // returns the site's own title/chapter/page-type functions, and the generic fallback fills gaps.
   const site = window.__kura.forHost(location.hostname);
 
+  /**
+   * The series name out of a reader's tab title.
+   *
+   * The old rule cut at a separator followed by `ch`, which matched the inside of a hyphenated word:
+   * "Mikoto-chan Doesn't Want to Be Hated! - Chapter 80" became "Mikoto" — a different manga with its
+   * own MAL/AniList entry, so the chapter was linked to a stranger's series. A separator only cuts
+   * when a chapter or volume word is followed by a number, never when a word merely starts with "ch".
+   */
   const stripNoise = (t) =>
     String(t || '')
-      .replace(/\s*[|·—-]\s*(read|chapter|ch\.?|vol\.?|manga|online|free|raw|english).*$/i, '')
-      .replace(/\s*(chapter|ch\.?)\s*[0-9]+(\.[0-9]+)?/gi, '')
+      .replace(/\s*[|·—–-]?\s*\b(?:chapter|ch|ep|episode|vol|volume)\s*\.?\s*\d+.*$/i, '')
+      .replace(/\s*[|·—–-]\s*(?:read(?:er|ing)?|watch(?:er)?|manga|manhwa|manhua|comics?|online|free|raws?|english)\b.*$/i, '')
       .replace(/\s*[-–—:|]\s*$/g, '')
       .trim();
 
