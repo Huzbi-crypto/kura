@@ -120,12 +120,20 @@
     return slug.replace(/\b[a-z]/g, (c) => c.toUpperCase());
   }
 
+  /**
+   * The series name, plus whether it is only a guess.
+   *
+   * A slug title ("/series/harem-ascend/" -> "Harem Ascend") is what is left when the page has not
+   * rendered its own name yet, and creating a record from it made a second series for a title that
+   * arrived seconds later ("My Harem Grew So Large, I Was Forced to Ascend"). The caller waits for a
+   * real title instead; the slug stays a last resort.
+   */
   function detectTitle(host) {
     const rule = site;
     const og = (p) => document.querySelector(`meta[property="${p}"], meta[name="${p}"]`)?.content || '';
     if (rule.title) {
       const t = stripNoise(rule.title() || '');
-      if (t && !isSiteName(t, host)) return t;
+      if (t && !isSiteName(t, host)) return { title: t, guess: false };
     }
     const headings = [...document.querySelectorAll(
       'h1, [itemprop="name"], .title, .manga-title, .series-title, .chapter-title, [data-title], [data-manga-title]',
@@ -137,18 +145,21 @@
       .map((a) => (a.textContent || '').trim())
       .filter((t) => t.length > 1 && t.length < 120);
 
-    const candidates = [...headings, ...seriesLink.slice(0, 3), og('og:title'), document.title, titleFromUrl()];
+    const candidates = [...headings, ...seriesLink.slice(0, 3), og('og:title'), document.title];
     for (const raw of candidates) {
       const t = stripNoise(raw);
-      if (t && !isSiteName(t, host)) return t;
+      if (t && !isSiteName(t, host)) return { title: t, guess: false };
     }
-    return '';
+    const fromUrl = stripNoise(titleFromUrl());
+    if (fromUrl && !isSiteName(fromUrl, host)) return { title: fromUrl, guess: true };
+    return { title: '', guess: false };
   }
 
   function detect() {
     const host = location.hostname.replace(/^www\./, '');
     const rule = site;
-    const title = detectTitle(host);
+    const named = detectTitle(host);
+    const title = named.title;
     let chapter = rule.chapter ? rule.chapter() : null;
     if (!chapter) {
       const m = (document.title + ' ' + location.pathname + ' ' + location.href).match(
@@ -162,7 +173,7 @@
     }
     // chapter 0 is a real chapter (mangadot and others use prologues numbered 0)
     const num = chapter === null || chapter === undefined || chapter === '' ? null : Number(chapter);
-    return { title, chapter: Number.isFinite(num) ? num : null, host, url: location.href };
+    return { title, titleGuess: named.guess, chapter: Number.isFinite(num) ? num : null, host, url: location.href };
   }
 
   /** the element that actually scrolls: readers often put the pages in an inner container */
@@ -282,6 +293,8 @@
   let lastPath = location.pathname;
   const keyOf = (d) => `${d.title}|${d.chapter}`;
   let lastPct = 'init';
+  let guessSince = 0;        // when the only title available was the URL slug
+  let guessTimer = null;
   const IDLE_AFTER = 6000;
 
   function reveal(ms = IDLE_AFTER) {
@@ -428,6 +441,25 @@
     label.innerHTML = `<b>${d.title}</b> · ch ${d.chapter}`;
     paintProgress(readPercent(), false);
     reveal();
+
+    // A name taken from the URL slug is a guess: the page has not rendered its own title yet, and
+    // recording it creates a series under the guess ('Harem Ascend') while the real title arriving a
+    // second later creates another. Wait for the page to name itself; after five seconds take the
+    // guess, so a layout that never renders a title still records something.
+    if (d.titleGuess) {
+      if (!guessSince) guessSince = Date.now();
+      if (Date.now() - guessSince < 5000) {
+        current = null;          // let the next page mutation report again
+        // a page that never changes would never retry, so hold one timer of its own
+        clearTimeout(guessTimer);
+        guessTimer = setTimeout(() => { if (current === null) report(true); }, 5200);
+        flash('waiting for the page title');
+        return;
+      }
+    } else {
+      guessSince = 0;
+    }
+
     const ids = await collectIds(d.title);
     const r = await post('reading', ids ? { ...d, ids } : d);
     if (r?.ok) paintDots(r.trackers || {});

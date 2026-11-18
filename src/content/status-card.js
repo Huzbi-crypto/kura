@@ -279,17 +279,23 @@
     box.append(track);
 
     const rows = el('div', { display: 'flex', columnGap: '20px', rowGap: '8px', flexWrap: 'wrap', opacity: '0.85' });
+    const conn = data.connected || {};
     for (const [id, name] of Object.entries(TRACKERS)) {
-      if (!data.links?.[id]) continue;
+      const linked = !!data.links?.[id];
+      // a connected service with no link is a fact the reader needs to see: the panel used to omit it,
+      // so a series missing from MAL looked as if MAL were not connected at all
+      if (!linked && !conn[id]) continue;
       const st = data.trackers?.[id] || {};
       const row = el('span', { display: 'inline-flex', alignItems: 'center', gap: '6px' });
       const dot = el('i', {
         width: '6px', height: '6px', borderRadius: '50%', display: 'inline-block',
-        background: st.state === 'error' ? '#ef5f5f' : st.state === 'pending' ? '#e7b34a' : '#46d39a',
+        background: !linked ? 'rgba(139,139,154,0.8)'
+          : st.state === 'error' ? '#ef5f5f' : st.state === 'pending' ? '#e7b34a' : '#46d39a',
       });
-      const detail = st.chapter != null && st.chapter !== data.chapter ? ` · Ch. ${st.chapter}` : '';
+      const detail = !linked ? ' · not linked' : st.chapter != null && st.chapter !== data.chapter ? ` · Ch. ${st.chapter}` : '';
       row.append(dot, document.createTextNode(`${name}${detail}`));
-      row.title = st.error ? `${name}: ${st.error}` : `${name}: ${st.state || 'unknown'}`;
+      row.title = !linked ? `${name}: connected, but this series is not linked to it yet`
+        : st.error ? `${name}: ${st.error}` : `${name}: ${st.state || 'unknown'}`;
       rows.append(row);
     }
     if (rows.childNodes.length) box.append(rows);

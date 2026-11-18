@@ -204,8 +204,17 @@ export async function push(series, st) {
   if (st.status) body.state = STATUS_OUT[st.status];
   if (st.rating) body.rating = Math.round(st.rating * 10);
   // only /v1 carries per-series writes (there is no /v2/my/library/{id})
-  const d = await api(`/v1/my/library/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
-  return d?.data || null;
+  try {
+    const d = await api(`/v1/my/library/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
+    return d?.data || null;
+  } catch (e) {
+    // PATCH is an update, and a series that is not on the list yet 404s. Adding it is a separate
+    // verb: POST creates the entry. Without this, every new series failed on MangaBaka forever while
+    // AniList and MAL took the same chapter (the dot stayed red and the queue gave up after 5 tries).
+    if (e.status !== 404) throw e;
+    const d = await api(`/v1/my/library/${id}`, { method: 'POST', body: JSON.stringify(body) });
+    return d?.data || null;
+  }
 }
 
 const seriesTitle = (s) => s.title || s.romanized_title || s.titles?.find?.((t) => t.is_primary)?.title
@@ -219,13 +228,19 @@ const coverUrl = (s) => {
   return c.raw?.url || c.x150?.url || c.large || c.medium || null;
 };
 
+// MangaBaka keeps manga, manhwa and manhua apart, and `type` is an array: one value filters the
+// others out. A stoneScape manhua searched as `type=manga` returned zero rows, so the extension
+// logged "no MangaBaka result" for a series that is on MangaBaka under that exact name.
+const SEARCH_TYPES = ['manga', 'manhwa', 'manhua'];
+const TYPE_QS = SEARCH_TYPES.map((t) => `&type=${t}`).join('');
+
 export async function search(query) {
   let rows = [];
   try {
-    const d = await jsonFetch(`${API}/v1/series/search?q=${encodeURIComponent(query)}&type=manga`, { headers: { Accept: 'application/json' } });
+    const d = await jsonFetch(`${API}/v1/series/search?q=${encodeURIComponent(query)}${TYPE_QS}`, { headers: { Accept: 'application/json' } });
     rows = d?.data || d?.results || [];
   } catch {
-    const d = await jsonFetch(`${API}/v2/series/search?q=${encodeURIComponent(query)}&type=manga&limit=10`, { headers: { Accept: 'application/json' } });
+    const d = await jsonFetch(`${API}/v2/series/search?q=${encodeURIComponent(query)}${TYPE_QS}&limit=10`, { headers: { Accept: 'application/json' } });
     rows = d?.data || [];
   }
   return rows.slice(0, 10).map((s) => ({

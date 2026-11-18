@@ -236,7 +236,10 @@ async function loadDiag() {
       const what = el('span', 'what', e.v && e.v !== version ? `${e.msg}  (v${e.v})` : e.msg);
       const where = el('span', 'where', [e.data?.host, e.data?.title, e.data?.chapter != null ? 'ch ' + e.data.chapter : '']
         .filter(Boolean).join(' · '));
-      if (e.data?.detail) what.title = e.data.detail;
+      // the row is one line with an ellipsis, so the full text has to be reachable: every long string
+      // in the log gets a tooltip carrying all of it
+      what.title = [e.msg, e.data?.detail].filter(Boolean).join('\n');
+      where.title = where.textContent;
       row.append(when, what, where);
       box.append(row);
     }

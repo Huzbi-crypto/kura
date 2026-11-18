@@ -3,6 +3,29 @@
 All notable changes to Kura. Format: [Keep a Changelog](https://keepachangelog.com/), versioning
 follows [SemVer](https://semver.org/).
 
+## [0.9.24] — unreleased
+
+MangaBaka now actually receives new series, and the panel says when a service is not linked.
+
+- **The MangaBaka search is no longer filtered to `type=manga`.** The parameter is an array and one
+  value excludes everything else: a stoneScape manhua searched with `type=manga` returned zero rows,
+  so the log said "no MangaBaka result" for a series that is on MangaBaka under that exact name and
+  the extension fell back to the bridge. All three types (manga, manhwa, manhua) are sent now.
+- **A series that is not on the MangaBaka list yet is created, not rejected.** `PATCH
+  /v1/my/library/{id}` is an update, and it answers 404 for anything not already on the list, so every
+  new series failed on MangaBaka forever while AniList and MAL took the same chapter (the red dot with
+  "404 NOT_FOUND"). On a 404 the adapter now POSTs the same body, which is the create verb. Verified
+  with a stubbed fetch: PATCH then POST, entry created.
+- **The panel lists a connected service even when the series is not linked to it** ("MyAnimeList · not
+  linked", grey dot). Omitting the row made a missing link look like a service that was not connected.
+- **A URL slug no longer creates a series.** When a site has not rendered its `<title>` yet the only
+  name is the slug, and recording it made "Harem Ascend" beside "My Harem Grew So Large, I Was Forced
+  to Ascend" — two records, one chapter split between them. The pill now waits up to five seconds for
+  the page to name itself, then takes the guess so a layout with no title still records. Harness case:
+  a page whose title arrives at 2.5s sends only the real title.
+- **The activity log shows the whole line on hover.** Every message and location carries a tooltip with
+  its full text; the row still truncates with an ellipsis, as before.
+
 ## [0.9.23] — unreleased
 
 The panel finds a series by the ids the page declares, not only by its name.

@@ -208,6 +208,9 @@ const handlers = {
       found: true, seriesId: s.id, title: s.title,
       chapter: st.chapter || 0, volume: st.volume || 0, total: s.total || 0,
       status: st.status || null, links: s.links || {}, trackers: st.trackers || {},
+      // which services could be written at all: an unlinked one must be visible as unlinked, not
+      // missing, or the panel reads as if the service were not connected
+      connected: await connected(),
     };
   },
   /** a page reporting why the panel did or did not appear */
