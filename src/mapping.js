@@ -8,7 +8,7 @@ import { series as S, uid, normTitle } from './db.js';
 const MB = 'https://api.mangabaka.org/v1';
 
 export function newSeries({ title, cover = null, total = 0, links = {}, aliases = [] }) {
-  const s = { id: uid(), title, normTitle: normTitle(title), cover, total, links: { ...links }, createdAt: Date.now() };
+  const s = { id: uid(), title, normTitle: normTitle(title), cover, total: Number(total) || 0, links: { ...links }, createdAt: Date.now() };
   // other names the trackers publish for this series (romaji vs English): used to recognise the same
   // page next time instead of creating the series again under a slightly different title
   const extra = [...new Set(aliases.filter(Boolean))].filter((a) => a !== title);
@@ -32,7 +32,7 @@ export async function resolveLinks(s) {
     const d = await mbSeries(s.links.mangabaka);
     if (d) {
       if (!s.cover) s.cover = d.cover?.raw?.url || d.cover?.x150?.url || d.cover?.large || null;
-      if (!s.total) s.total = d.total_chapters || d.final_volume || 0;
+      if (!s.total) s.total = Number(d.total_chapters || d.final_volume) || 0;
       if (d.source?.anilist?.id && !s.links.anilist) s.links.anilist = d.source.anilist.id;
       if (d.source?.my_anime_list?.id && !s.links.mal) s.links.mal = d.source.my_anime_list.id;
     }

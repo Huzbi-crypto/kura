@@ -102,6 +102,16 @@
   // the registry (a brand is a prefix of its own hostname), so this list stays free of site names.
   const READER_BRANDS = ['reader', 'home', 'read manga online', 'manga', 'read', 'chapter'];
 
+  /**
+   * "Knight and Penguin — MangaDot" -> "Knight and Penguin". A reader's title often ends with its own
+   * name, and a site that renders "<series> — <site>" before the chapter suffix arrives produced a
+   * second, differently-named identity for the same chapter.
+   */
+  function cutSiteTail(t, host) {
+    const m = String(t || '').match(/^(.*?)\s+[|·—–-]\s+([^|·—–-]{2,40})$/);
+    return m && isSiteName(m[2], host) ? m[1].trim() : t;
+  }
+
   /** the site's own name must never stand in for the series name (stonescape.xyz does this) */
   function isSiteName(text, host) {
     const a = squash(text);
@@ -132,7 +142,7 @@
     const rule = site;
     const og = (p) => document.querySelector(`meta[property="${p}"], meta[name="${p}"]`)?.content || '';
     if (rule.title) {
-      const t = stripNoise(rule.title() || '');
+      const t = cutSiteTail(stripNoise(rule.title() || ''), host);
       if (t && !isSiteName(t, host)) return { title: t, guess: false };
     }
     const headings = [...document.querySelectorAll(
@@ -147,7 +157,7 @@
 
     const candidates = [...headings, ...seriesLink.slice(0, 3), og('og:title'), document.title];
     for (const raw of candidates) {
-      const t = stripNoise(raw);
+      const t = cutSiteTail(stripNoise(raw), host);
       if (t && !isSiteName(t, host)) return { title: t, guess: false };
     }
     const fromUrl = stripNoise(titleFromUrl());
@@ -161,15 +171,19 @@
     const named = detectTitle(host);
     const title = named.title;
     let chapter = rule.chapter ? rule.chapter() : null;
-    if (!chapter) {
-      const m = (document.title + ' ' + location.pathname + ' ' + location.href).match(
-        /(?:chapter|chap|ch\.?|episode|vol(?:ume)?\.?\s*[0-9]+\s*chapter)\s*[-_/ ]?\s*([0-9]+(?:\.[0-9]+)?)/i,
-      );
-      chapter = m?.[1] || (location.pathname.match(/\/chapters?\/[^/]*?(\d+(?:\.\d+)?)/) || [])[1] || null;
+    if (chapter === null || chapter === undefined || chapter === '') {
+      // the title, then a readable URL ("/chapter-42", "/ch-5"). A number after a bare "/chapter/"
+      // is an opaque id: mangadot's reader lives at /chapter/3070825, and reading it as "chapter
+      // 3070825" was the number the pill showed.
+      const m = String(document.title || '').match(/\b(?:chapter|chap|ch\.?|episode)\s*[.:#]?\s*([0-9]+(?:\.[0-9]+)?)/i)
+        || location.pathname.match(/\/(?:chapter|chap|ch)[-_]([0-9]+(?:\.[0-9]+)?)/i);
+      chapter = m?.[1] ?? null;
     }
-    if (!chapter) {
-      const m = location.pathname.match(/(?:^|\/)(\d+(?:\.\d+)?)\/?$/);
-      chapter = m?.[1] || null;
+    if (chapter === null || chapter === undefined || chapter === '') {
+      // a trailing number is a chapter only on a route that is not a chapter-id route
+      const idRoute = /\/(?:chapter|chapters|read|view|episode)\/[^/]+\/?$/i.test(location.pathname);
+      const m = idRoute ? null : location.pathname.match(/(?:^|\/)(\d+(?:\.\d+)?)\/?$/);
+      chapter = m?.[1] ?? null;
     }
     // chapter 0 is a real chapter (mangadot and others use prologues numbered 0)
     const num = chapter === null || chapter === undefined || chapter === '' ? null : Number(chapter);

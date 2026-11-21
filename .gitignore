@@ -49,4 +49,6 @@ tools/detect-test.js
 
 tools/inspect-site.mjs
 tools/repro-*.mjs
+tools/_probe-*.mjs
+tools/_nav-probe.mjs
 tools/read-user-state.mjs

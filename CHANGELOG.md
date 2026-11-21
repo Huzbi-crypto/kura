@@ -3,6 +3,33 @@
 All notable changes to Kura. Format: [Keep a Changelog](https://keepachangelog.com/), versioning
 follows [SemVer](https://semver.org/).
 
+## [0.9.25] — unreleased
+
+A one-shot reads as chapter 0 on the site and 1 on every tracker, and a reader's URL number is an id.
+
+- **A number lifted from a chapter URL is never the chapter any more.** The generic fallback searched
+  `location.href` for `chapter<sep>digits`, so mangadot's `/chapter/3070825` became "chapter 3070825"
+  (the pill showed `ch 3070…`, and the worker rejected the completion as implausible). A title is
+  searched first, then only a readable URL (`/chapter-42`, `/ch-5`), and a trailing number is refused
+  on a chapter-id route.
+- **mangadot spells the marker out.** Its rule only knew `Ch.`, so `Knight and Penguin — Chapter 0`
+  fell through to that fallback; it now accepts both spellings, which also stops the title flapping
+  between the hydrated and un-hydrated forms.
+- **A trailing site name is cut from a title.** `Knight and Penguin — MangaDot` was recorded as its own
+  series name; the last segment is dropped when it is the site's own brand, the same rule that already
+  guarded the whole-title case.
+- **Finishing a chapter leaves "plan to read" even when the number does not move.** The status was only
+  promoted inside the "chapter went up" branch, so a completion at chapter 0 pushed
+  `{chapter: 0, status: planning}` — MAL and MangaBaka showed a one-shot as *plan to read* after it had
+  been read. A completion now always promotes planning/null to reading and refreshes `updatedAt`.
+- **The only chapter of a 1-chapter work counts as chapter 1.** Sites publish a one-shot as "chapter 0"
+  and trackers as "1 chapter"; recording 0 tells them nothing was read. `total === 1 && chapter === 0`
+  is recorded as 1, which lands as completed.
+- Totals are normalised to numbers: MangaBaka answers `total_chapters` as a string (`"103"`), so the
+  one-chapter comparison and every `>= total` check were comparing a string.
+- Verified: overlay harness (one-shot fixture: `ch 0`, no 3070825 on either title state), extension
+  harness (one-shot records 1/completed; a completion at chapter 0 leaves `planning`).
+
 ## [0.9.24] — unreleased
 
 MangaBaka now actually receives new series, and the panel says when a service is not linked.

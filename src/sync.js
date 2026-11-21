@@ -151,14 +151,22 @@ export async function recordProgress(seriesId, chapter, { volume = 0, advance = 
     await ST.put(st);
     return st;
   }
-  const next = Math.max(st.chapter || 0, Number(chapter) || 0);
-  const total = s.total || 0;
+  const total = Number(s.total) || 0;
+  const n = Number(chapter) || 0;
+  // A one-shot is "chapter 0" on the site and "1 chapter" on every tracker. Recording 0 leaves them
+  // saying the reader never started a series they just finished, so the only chapter counts as one.
+  const eff = total === 1 && n === 0 ? 1 : n;
+  const next = Math.max(st.chapter || 0, eff);
   if (next > (st.chapter || 0)) {
     st.chapter = next;
     st.updatedAt = Date.now();
-    if (!st.status || st.status === 'planning') st.status = 'reading';
-    if (total && next >= total) st.status = 'completed';
+  } else if (advance) {
+    // finishing a chapter does not have to move the number (chapter 0, or re-reading what the record
+    // already held); the status must still leave "plan to read", or the trackers get pushed 'planning'
+    st.updatedAt = Date.now();
   }
+  if (!st.status || st.status === 'planning') st.status = 'reading';
+  if (total && (st.chapter || 0) >= total) st.status = 'completed';
   if (volume) st.volume = Math.max(st.volume || 0, volume);
   await ST.put(st);
   return pushOut(s, st);
