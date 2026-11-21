@@ -187,7 +187,17 @@
     }
     // chapter 0 is a real chapter (mangadot and others use prologues numbered 0)
     const num = chapter === null || chapter === undefined || chapter === '' ? null : Number(chapter);
-    return { title, titleGuess: named.guess, chapter: Number.isFinite(num) ? num : null, host, url: location.href };
+    const d = { title, titleGuess: named.guess, chapter: Number.isFinite(num) ? num : null, host, url: location.href };
+    // Readers rewrite their <title> while they render (mangadot does it for the end-of-chapter card),
+    // and one read without a marker used to blank the chapter. A chapter already known for this
+    // pathname is remembered; a new pathname starts clean, so the next chapter is never inherited.
+    if (d.chapter != null) {
+      knownChapter = { path: location.pathname, chapter: d.chapter, title: d.title || knownChapter.title };
+    } else if (knownChapter.path === location.pathname && knownChapter.chapter != null) {
+      d.chapter = knownChapter.chapter;
+      if (!d.title) d.title = knownChapter.title;
+    }
+    return d;
   }
 
   /** the element that actually scrolls: readers often put the pages in an inner container */
@@ -309,6 +319,10 @@
   let lastPct = 'init';
   let guessSince = 0;        // when the only title available was the URL slug
   let guessTimer = null;
+  // the chapter last seen on each pathname, so a transient title rewrite cannot blank it
+  let knownChapter = { path: '', chapter: null, title: '' };
+  let nullTries = 0;         // a known reader gets a few moments to name its chapter
+  let nullTimer = null;
   const IDLE_AFTER = 6000;
 
   function reveal(ms = IDLE_AFTER) {
@@ -439,10 +453,23 @@
       armed = false;
       openTop = 0;
       notSavedKey = null;      // a failure belongs to the chapter it happened on, not to the next one
+      nullTries = 0;
     }
     current = key;
 
     if (d.chapter == null) {
+      // A reader Kura has a rule for is allowed to render before we give up on the number: mangadot
+      // swaps its <title> while the end-of-chapter card mounts, and one such read left the pill on
+      // "ch ?" (with the manual input open) for the rest of the session while completions kept working.
+      if (site.chapterPage && nullTries < 5) {
+        nullTries++;
+        current = null;                       // nothing is committed for this state
+        label.innerHTML = `<b>${d.title}</b> · …`;
+        reveal(9000);
+        clearTimeout(nullTimer);
+        nullTimer = setTimeout(() => report(true), 600);
+        return;
+      }
       // no chapter in the URL or title: ask once instead of doing nothing
       label.innerHTML = `<b>${d.title}</b> · ch ?`;
       manualMode(true);
@@ -451,6 +478,8 @@
       paintProgress(null, false);
       return;
     }
+    nullTries = 0;
+    clearTimeout(nullTimer);
     manualMode(false);
     label.innerHTML = `<b>${d.title}</b> · ch ${d.chapter}`;
     paintProgress(readPercent(), false);
@@ -512,6 +541,9 @@
       completedKey = key;
       notSavedKey = null;
       toast.textContent = '';
+      // the label follows the chapter that was actually saved, even if the pill was still asking for it
+      label.innerHTML = `<b>${d.title}</b> · ch ${d.chapter}`;
+      manualMode(false);
       paintProgress(100, true);
       paintDots(r.trackers || {});
       reveal(4000);

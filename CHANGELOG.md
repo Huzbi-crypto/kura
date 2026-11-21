@@ -3,6 +3,26 @@
 All notable changes to Kura. Format: [Keep a Changelog](https://keepachangelog.com/), versioning
 follows [SemVer](https://semver.org/).
 
+## [0.9.26] — unreleased
+
+A reader that rewrites its title mid-page no longer loses the chapter.
+
+- **One title without a marker no longer leaves the pill on "ch ?".** mangadot swaps `<title>` while the
+  end-of-chapter card mounts; a single read that fell in that gap dropped the pill into manual mode and
+  stuck there for the rest of the session (`current` had already been set), even though completions kept
+  reaching the trackers. A site with a chapter rule now retries five times, 600 ms apart, showing `…`
+  before it asks for the number.
+- **A chapter already known for a pathname is remembered.** A later rewrite — mangadot drops the title
+  to the bare brand — can no longer blank a chapter the page had already told us. The memory is keyed by
+  path, so the next chapter never inherits the previous one.
+- **A successful completion repaints the label and closes the manual input**, so a pill that had asked
+  for the number shows the chapter that was actually saved.
+- **The overlay harness reaps a stale test browser first.** A headless Edge left behind by an
+  interrupted run held `:9477` and the next run died with `EADDRINUSE`; `reapPort()` kills it only when
+  the listener's command line carries `--headless` and a `kura-` profile, and removes that profile.
+- Verified: overlay harness (late title → `ReLIFE · ch 1`, no manual input; title dropped after a good
+  read → chapter kept), full suite green.
+
 ## [0.9.25] — unreleased
 
 A one-shot reads as chapter 0 on the site and 1 on every tracker, and a reader's URL number is an id.
