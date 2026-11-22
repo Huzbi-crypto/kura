@@ -3,7 +3,7 @@
 <p>
   <a href="LICENSE"><img alt="license MIT" src="https://img.shields.io/badge/license-MIT-0e0e12"></a>
   <img alt="manifest v3" src="https://img.shields.io/badge/manifest-v3-0e0e12">
-  <img alt="version" src="https://img.shields.io/badge/version-0.1.0-f0526b">
+  <a href="manifest.json"><img alt="version" src="https://img.shields.io/github/manifest-json/v/Huzbi-crypto/kura?filename=manifest.json"></a>
   <img alt="no build step" src="https://img.shields.io/badge/build-none-0e0e12">
 </p>
 
@@ -47,9 +47,10 @@ git clone https://github.com/Huzbi-crypto/kura.git
    - **MyAnimeList** → Connect.
    - **MangaBaka** → paste a personal access token from mangabaka.org → Save.
 
-The AniList app and the MyAnimeList token-exchange Worker are already deployed for you, so there
-is nothing to register and no secret in the bundle. Both Setup fields are optional overrides if you
-want to run your own apps:
+The AniList client id and the MyAnimeList token-exchange Worker ship with Kura, so there is nothing
+to register: the Worker exists because MAL's token endpoint needs a client secret, and a secret must
+not live in a bundle. The Worker is the maintainer's deployment and can be replaced in Setup, along
+with the client id:
 
 ```bash
 cd worker && npx wrangler deploy
@@ -61,7 +62,7 @@ npx wrangler secret put MAL_CLIENT_SECRET
 
 - **Library** — cover grid, chapters read against total, progress bar, one-tap `+1`, per-tracker
   dots (green synced, amber pending, red error), filter, **Sync all**.
-- **Reading pill** — on atsu.moe, stonescape.xyz, weebcentral.com and mangadot.com a small pill
+- **Reading pill** — on atsu.moe, stonescape.xyz, weebcentral.com and mangadot.net a small pill
   shows the series and chapter with `+1`. If a page can't be parsed it asks for the number once
   rather than silently doing nothing.
 - **Add** — search MangaBaka; the MAL and AniList ids resolve automatically through the bridge.
@@ -69,34 +70,40 @@ npx wrangler secret put MAL_CLIENT_SECRET
 ## Privacy
 
 No account, no analytics, no telemetry, no remote code. Tracker tokens live in your browser's
-extension storage; Kura talks only to the services you connect. Full policy:
-[docs/PRIVACY.md](docs/PRIVACY.md).
+extension storage, and Kura talks to the services you connect — plus one Worker for MyAnimeList's
+token exchange, which forwards the request with the client secret attached and stores nothing.
+Full policy: [docs/PRIVACY.md](docs/PRIVACY.md).
 
 ## Develop
 
 No build step, no dependencies. ES modules straight into MV3.
 
 ```bash
-node tools/verify-extension.mjs   # headless load, worker check, popup render, add+bump smoke test
-node tools/package.mjs            # dist/kura-<version>.zip for the Web Store
+KURA_BROWSER_TESTS=1 node tools/verify-extension.mjs   # headless load, worker, popup, add + bump
+node tools/package.mjs                                # dist/kura-<version>.zip for the Web Store
 ```
 
-Architecture and the reasoning behind the sync rules: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+The `KURA_BROWSER_TESTS=1` gate is deliberate: those harnesses launch a headless browser, and the
+gate keeps a plain `node tools/*.mjs` from doing it by accident.
+
+Architecture and the reasoning behind the sync rules: [ARCHITECTURE.md](ARCHITECTURE.md).
 Store submission copy and permission justifications: [docs/STORE-LISTING.md](docs/STORE-LISTING.md).
 
 ```
 src/sync.js            pull → highest chapter wins → push fan-out, retry queue
 src/mapping.js         cross-tracker ids via MangaBaka
 src/trackers/*.js      one adapter per service (pull / push / search)
-src/db.js              IndexedDB: series, state, queue
+src/sites/*.js         per-site rules: url patterns, title and chapter extractors, panel placement
+src/db.js              IndexedDB: series, state, queue, kv
 src/content/overlay.js reader pill (shadow DOM, SPA-aware)
 worker/mal-token.js    MAL token exchange (Cloudflare Worker)
 ```
 
 ## Roadmap
 
-- [ ] First-run import: pull an existing list from a tracker into the library.
-- [ ] Reader detectors tuned per site (Weeb Central sits behind Cloudflare; needs a real browser).
+- [x] First-run import: pull an existing list from a tracker into the library.
+- [x] Reader detectors for atsu.moe, stonescape.xyz, mangadot.net and weebcentral.com, audited
+  against the live pages (`docs/SITES.md`).
 - [ ] Ratings and notes surfaced in the UI.
 - [ ] Divergence view: "MAL says 42, AniList 40 — make them agree" in one tap.
 - [ ] More readers, more trackers (Kitsu, Shikimori — MangaBaka already bridges their ids).

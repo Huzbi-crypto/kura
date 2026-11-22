@@ -25,7 +25,7 @@ WHAT IT DOES
 • Per-tracker state, not one vague "connected" light: synced, pending, or failed with the reason.
   Failures retry in the background with backoff.
 • A reading pill on the pages you already use (atsu.moe, stonescape.xyz, weebcentral.com,
-  mangadot.com) with one-tap "+1 chapter". If a site can't be parsed, it asks for the chapter
+  mangadot.net) with one-tap "+1 chapter". If a site can't be parsed, it asks for the chapter
   number instead of silently doing nothing.
 • Manga-first UI: cover grid, chapters read against total, progress bar, one tap to advance.
 
@@ -49,7 +49,7 @@ MIT licensed. github.com/Huzbi-crypto/kura
 | `https://graphql.anilist.co/*` | Read and update the user's AniList manga list. |
 | `https://api.mangabaka.org/*` | Read and update the user's MangaBaka list; look up metadata and cross-tracker ids. |
 | `myanimelist.net` | The MAL OAuth authorize page. |
-| `atsu.moe`, `stonescape.xyz`, `weebcentral.com`, `mangadot.com` | Content script: read the series and chapter of the page the user has open, to record progress. |
+| `atsu.moe`, `stonescape.xyz`, `weebcentral.com`, `mangadot.net` | Content script: read the series and chapter of the page the user has open, to record progress. |
 
 ## Single purpose statement
 

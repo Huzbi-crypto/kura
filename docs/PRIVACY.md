@@ -1,6 +1,6 @@
 # Privacy policy — Kura
 
-Last updated: 2026-11-11
+Last updated: 2026-11-21
 
 Kura is a browser extension that keeps your manga reading progress in step across
 MyAnimeList, AniList and MangaBaka. This page describes exactly what leaves your browser.
@@ -24,7 +24,7 @@ Only requests you cause, to the services you connected:
 | `api.myanimelist.net` | your MyAnimeList token, the manga id, chapter/volume/status/score | read and write your MAL list |
 | `graphql.anilist.co` | your AniList token, the media id, progress/status/score | read and write your AniList list |
 | `api.mangabaka.org` | your MangaBaka token (for `/my/*`), series ids and titles | read and write your MangaBaka list, and look up series metadata |
-| your Kura Worker (if self-hosted) | the OAuth code or refresh token | exchange it for a MyAnimeList token, because MAL requires the client secret |
+| the Kura token Worker (`kura-mal.huzbipers-o-n-al.workers.dev` by default, or whatever you set in Setup) | the OAuth code or refresh token, with the client secret attached by the Worker | exchange it for a MyAnimeList token, because MAL requires a secret that cannot ship inside an extension |
 
 Kura never contacts the reader sites' servers: the content script only reads the page you have
 open, in your browser, and reports the series and chapter to the extension.
@@ -33,8 +33,10 @@ open, in your browser, and reports the series and chapter to the extension.
 
 - No analytics, crash reporting, advertising or fingerprinting.
 - No remote code: every script is inside the packaged extension.
-- No selling or sharing of your data with anyone. Your tokens never reach a server we control
-  unless you deploy your own Worker for MyAnimeList.
+- No selling or sharing of your data with anyone. By default MyAnimeList's token exchange passes
+  through the maintainer's Worker: it attaches the client secret, forwards MAL's answer and stores
+  nothing, but it is a server we run, so deploy your own Worker and set its URL in Setup if you
+  would rather not use it.
 
 ## Removing your data
 
